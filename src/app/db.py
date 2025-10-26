@@ -7,13 +7,26 @@ from .config import DB_PATH
 logger = logging.getLogger(__name__)
 
 def db_connect():
-    # Директория /app/data должна быть создана в Dockerfile
-    # Не создаём её здесь, чтобы избежать проблем с правами
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    return conn
+    # Создаем директорию если её нет
+    try:
+        db_dir = os.path.dirname(DB_PATH)
+        if db_dir and not os.path.exists(db_dir):
+            os.makedirs(db_dir, mode=0o755, exist_ok=True)
+            logger.info(f"Created database directory: {db_dir}")
+        
+        # Проверяем права на запись
+        if not os.access(db_dir, os.W_OK):
+            logger.error(f"No write permission in {db_dir}")
+        
+        conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        return conn
+    except Exception as e:
+        logger.error(f"Failed to connect to database at {DB_PATH}: {e}", exc_info=True)
+        raise
 
 def db_init():
+    logger.info(f"Initializing database at {DB_PATH}")
     try:
         conn = db_connect()
         c = conn.cursor()
