@@ -1,0 +1,17 @@
+version: "3.9"
+
+services:
+  dailypilot-bot:
+    build: .
+    container_name: dailypilot-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data:/data
+    networks:
+      - dailypilot_net
+
+networks:
+  dailypilot_net:
+    driver: bridge
