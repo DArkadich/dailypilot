@@ -22,5 +22,8 @@ USER botuser
 # Переменная пути к БД по умолчанию (можно переопределить в .env)
 ENV DB_PATH=/data/daily_pilot.db
 
+# Создаем директорию для БД
+RUN mkdir -p /data
+
 # Запуск
 CMD ["python", "-m", "src.app.main"]
