@@ -365,6 +365,48 @@ async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error in cmd_health: {e}", exc_info=True)
         await update.message.reply_text("❌ Ошибка при проверке здоровья.")
 
+async def cmd_push_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not ensure_allowed(update): return
+    try:
+        # import pandas as pd
+        from .integrations.sheets import export_week_from_bot_to_sheets
+        
+        wk_count, days_count = export_week_from_bot_to_sheets()
+        await update.message.reply_text(f"✅ В Sheets отправлено: Week_Tasks={wk_count}, Days={days_count}")
+    except Exception as e:
+        logger.error(f"Error in cmd_push_week: {e}", exc_info=True)
+        await update.message.reply_text(f"❌ Ошибка экспорта в Sheets: {e}")
+
+async def cmd_pull_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not ensure_allowed(update): return
+    try:
+        from .integrations.sheets import import_week_from_sheets_to_bot
+        
+        added = import_week_from_sheets_to_bot()
+        await update.message.reply_text(f"✅ Из Sheets подтянуто задач: {added}")
+    except Exception as e:
+        logger.error(f"Error in cmd_pull_week: {e}", exc_info=True)
+        await update.message.reply_text(f"❌ Ошибка импорта из Sheets: {e}")
+
+async def cmd_sync_notion(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Берём актуальные таблицы из Sheets и шьём в Notion базы (если настроены IDs)."""
+    if not ensure_allowed(update): return
+    try:
+        from .integrations.sheets import _open_sheet, SHEET_WEEK_TASKS, SHEET_DAYS
+        from .integrations.notion import push_week_tasks, push_days
+        
+        sh = _open_sheet()
+        wk = sh.worksheet(SHEET_WEEK_TASKS).get_all_records()
+        ds = sh.worksheet(SHEET_DAYS).get_all_records()
+        t1 = push_week_tasks(wk) if wk else 0
+        # подготовим минимальные поля для Days
+        days_rows = [{"Date": r["Date"], "Day": r["Day"], "Frog": r["Frog"], "Stone1": r["Stone1"], "Stone2": r["Stone2"]} for r in ds]
+        t2 = push_days(days_rows) if ds else 0
+        await update.message.reply_text(f"✅ В Notion добавлено: Week_Tasks={t1}, Days={t2}")
+    except Exception as e:
+        logger.error(f"Error in cmd_sync_notion: {e}", exc_info=True)
+        await update.message.reply_text(f"❌ Ошибка синхронизации Notion: {e}")
+
 async def cmd_unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
-    await update.message.reply_text("Команды: /add /inbox /plan /done /snooze /week /export /stats /health")
+    await update.message.reply_text("Команды: /add /inbox /plan /done /snooze /week /export /stats /health /push_week /pull_week /sync_notion")
