@@ -15,15 +15,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Исходники
 COPY src ./src
 
+# Создаем директорию для БД ПЕРЕД переключением на пользователя
+RUN mkdir -p /data && chmod 777 /data
+
 # Ненулевой пользователь (безопасность)
 RUN useradd -ms /bin/bash botuser && chown -R botuser:botuser /app
 USER botuser
 
 # Переменная пути к БД по умолчанию (можно переопределить в .env)
 ENV DB_PATH=/data/daily_pilot.db
-
-# Создаем директорию для БД
-RUN mkdir -p /data
 
 # Запуск
 CMD ["python", "-m", "src.app.main"]
