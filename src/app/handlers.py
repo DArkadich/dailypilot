@@ -407,6 +407,23 @@ async def cmd_sync_notion(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error in cmd_sync_notion: {e}", exc_info=True)
         await update.message.reply_text(f"❌ Ошибка синхронизации Notion: {e}")
 
+async def cmd_generate_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Генерирует неделю из Goals/Projects в Sheets."""
+    if not ensure_allowed(update): return
+    try:
+        from .integrations.planner import generate_week_from_goals
+        
+        wk_count, days_count, added = generate_week_from_goals()
+        await update.message.reply_text(
+            f"✅ Неделя сгенерирована:\n"
+            f"📋 Week_Tasks: {wk_count}\n"
+            f"🗓 Days: {days_count}\n"
+            f"🎯 Задач в боте: {added}"
+        )
+    except Exception as e:
+        logger.error(f"Error in cmd_generate_week: {e}", exc_info=True)
+        await update.message.reply_text(f"❌ Ошибка генерации недели: {e}")
+
 async def cmd_unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
-    await update.message.reply_text("Команды: /add /inbox /plan /done /snooze /week /export /stats /health /push_week /pull_week /sync_notion")
+    await update.message.reply_text("Команды: /add /inbox /plan /done /snooze /week /export /stats /health /push_week /pull_week /sync_notion /generate_week")
