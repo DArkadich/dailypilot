@@ -7,6 +7,11 @@ pydub==0.25.1
 pytz==2024.2
 pytest==8.0.0
 httpx==0.27.0
+# Интеграции
+pandas==2.2.0
+gspread==6.0.1
+google-auth==2.27.0
+notion-client==2.2.1
 gspread==6.1.2
 google-auth==2.34.0
 pandas==2.2.3
