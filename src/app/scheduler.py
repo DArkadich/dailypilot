@@ -33,6 +33,8 @@ def start_reminder_loop(app):
     backup_scheduler()
     
     def loop():
+        global _sent_reminders
+        
         while True:
             try:
                 now_utc_iso = datetime.now(timezone.utc).isoformat()
@@ -61,7 +63,6 @@ def start_reminder_loop(app):
                 
                 # Очистка старых записей (старше суток)
                 current_time = time.time()
-                global _sent_reminders
                 _sent_reminders = {tid: t for tid, t in _sent_reminders.items() if current_time - t < 86400}
                 
                 time.sleep(60)
