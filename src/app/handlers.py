@@ -413,17 +413,36 @@ async def cmd_generate_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         from .integrations.planner import generate_week_from_goals
         
-        wk_count, days_count, added = generate_week_from_goals()
-        await update.message.reply_text(
-            f"✅ Неделя сгенерирована:\n"
-            f"📋 Week_Tasks: {wk_count}\n"
-            f"🗓 Days: {days_count}\n"
-            f"🎯 Задач в боте: {added}"
-        )
+        w, d, added = generate_week_from_goals()
+        await update.message.reply_text(f"✅ Сгенерирована неделя: Week_Tasks={w}, Days={d}, задач создано={added}")
     except Exception as e:
         logger.error(f"Error in cmd_generate_week: {e}", exc_info=True)
         await update.message.reply_text(f"❌ Ошибка генерации недели: {e}")
 
+async def cmd_merge_inbox(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Слить текучку из бота в Week_Tasks (добавить как камни недели по приоритету)"""
+    if not ensure_allowed(update): return
+    try:
+        from .integrations.sheets import export_week_from_bot_to_sheets
+        
+        wk_count, _ = export_week_from_bot_to_sheets()
+        await update.message.reply_text(f"✅ Текучка добавлена в Week_Tasks (Sheets): {wk_count} строк")
+    except Exception as e:
+        logger.error(f"Error in cmd_merge_inbox: {e}", exc_info=True)
+        await update.message.reply_text(f"❌ Ошибка слияния: {e}")
+
+async def cmd_commit_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Прочитать Week_Tasks из Sheets и зафиксировать в БД задач (дедлайны на дни недели)"""
+    if not ensure_allowed(update): return
+    try:
+        from .integrations.sheets import import_week_from_sheets_to_bot
+        
+        added = import_week_from_sheets_to_bot()
+        await update.message.reply_text(f"✅ Неделя зафиксирована: добавлено задач={added}")
+    except Exception as e:
+        logger.error(f"Error in cmd_commit_week: {e}", exc_info=True)
+        await update.message.reply_text(f"❌ Ошибка фиксации недели: {e}")
+
 async def cmd_unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
-    await update.message.reply_text("Команды: /add /inbox /plan /done /snooze /week /export /stats /health /push_week /pull_week /sync_notion /generate_week")
+    await update.message.reply_text("Команды: /add /inbox /plan /done /snooze /week /export /stats /health /push_week /pull_week /sync_notion /generate_week /merge_inbox /commit_week")
