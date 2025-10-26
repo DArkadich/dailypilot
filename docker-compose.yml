@@ -7,7 +7,7 @@ services:
     env_file:
       - .env
     volumes:
-      - ./data:/data
+      - ./data:/app/data
     networks:
       - dailypilot_net
 
