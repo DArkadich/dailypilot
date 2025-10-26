@@ -7,12 +7,8 @@ from .config import DB_PATH
 logger = logging.getLogger(__name__)
 
 def db_connect():
-    # Создаем директорию если её нет
-    db_dir = os.path.dirname(DB_PATH)
-    if db_dir and not os.path.exists(db_dir):
-        os.makedirs(db_dir, exist_ok=True)
-        logger.info(f"Created database directory: {db_dir}")
-    
+    # Директория /app/data должна быть создана в Dockerfile
+    # Не создаём её здесь, чтобы избежать проблем с правами
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
