@@ -7,7 +7,10 @@ services:
     env_file:
       - .env
     volumes:
-      - ./data:/app/data
+      - ./data:/app/data  # Старые данные (если есть)
+      - db_data:/app/db    # БД
+volumes:
+  db_data:
     networks:
       - dailypilot_net
 
