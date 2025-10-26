@@ -73,3 +73,33 @@ def start_reminder_loop(app):
     logger.info("Starting reminder loop")
     th = threading.Thread(target=loop, daemon=True)
     th.start()
+
+def start_nudges_loop(app):
+    """Напоминания в определённое время дня (лягушка утром, рефлексия вечером)"""
+    logger.info("Starting nudges loop")
+    
+    def loop():
+        from datetime import datetime
+        from .config import ALLOWED_USER_ID
+        
+        sent_today = {"frog": False, "reflect": False}
+        while True:
+            now = datetime.now(TZINFO)
+            try:
+                if now.hour == 8 and now.minute == 0 and not sent_today["frog"]:
+                    app.bot.send_message(chat_id=ALLOWED_USER_ID, text="🐸 Напомнить: отметь лягушку дня (/plan)")
+                    sent_today["frog"] = True
+                    logger.info("Frog nudge sent")
+                if now.hour == 21 and now.minute == 0 and not sent_today["reflect"]:
+                    app.bot.send_message(chat_id=ALLOWED_USER_ID, text="🪞 Рефлексия 5 минут: открой лист Days и ответь на 5 вопросов.")
+                    sent_today["reflect"] = True
+                    logger.info("Reflection nudge sent")
+                if now.hour == 0 and now.minute == 0:
+                    sent_today = {"frog": False, "reflect": False}
+                    logger.info("Nudges reset for new day")
+            except Exception as e:
+                logger.error(f"Error in nudges loop: {e}", exc_info=True)
+            time.sleep(60)
+    
+    th = threading.Thread(target=loop, daemon=True)
+    th.start()

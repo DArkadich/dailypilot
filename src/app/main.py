@@ -4,7 +4,7 @@ from telegram.ext import (
 )
 from .config import TELEGRAM_BOT_TOKEN, LOG_LEVEL
 from .db import db_init
-from .scheduler import start_reminder_loop
+from .scheduler import start_reminder_loop, start_nudges_loop
 from .handlers import (
     cmd_start, cmd_add, msg_voice, cmd_inbox, cmd_plan,
     cmd_done, cmd_snooze, cmd_week, cmd_export, cmd_unknown, cmd_stats, cmd_health,
@@ -42,6 +42,9 @@ def main():
 
     # Уведомления о сроках
     start_reminder_loop(app)
+    
+    # Пинки (утренняя лягушка, вечерняя рефлексия)
+    start_nudges_loop(app)
 
     app.run_polling()
 
