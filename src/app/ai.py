@@ -5,7 +5,14 @@ from pydub import AudioSegment
 from openai import OpenAI
 from .config import OPENAI_API_KEY, TZINFO
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+# Lazy initialization для избежания проблем с импортом
+_client = None
+
+def get_client():
+    global _client
+    if _client is None:
+        _client = OpenAI(api_key=OPENAI_API_KEY)
+    return _client
 
 SYSTEM_PROMPT = (
  "Ты помощник по задачам. Из входного текста выдели: "
@@ -16,6 +23,7 @@ SYSTEM_PROMPT = (
 )
 
 def transcribe_ogg_to_text(ogg_bytes: bytes) -> str:
+    client = get_client()
     audio = AudioSegment.from_file(io.BytesIO(ogg_bytes), format="ogg")
     wav_buf = io.BytesIO()
     audio.export(wav_buf, format="wav")
@@ -30,6 +38,7 @@ def transcribe_ogg_to_text(ogg_bytes: bytes) -> str:
     return tr
 
 def parse_task(text: str) -> dict:
+    client = get_client()
     r = client.chat.completions.create(
         model="gpt-4o-mini",
         temperature=0.2,
