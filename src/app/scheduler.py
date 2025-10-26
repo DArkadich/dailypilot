@@ -61,6 +61,7 @@ def start_reminder_loop(app):
                 
                 # Очистка старых записей (старше суток)
                 current_time = time.time()
+                global _sent_reminders
                 _sent_reminders = {tid: t for tid, t in _sent_reminders.items() if current_time - t < 86400}
                 
                 time.sleep(60)
