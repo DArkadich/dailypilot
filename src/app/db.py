@@ -202,6 +202,27 @@ def due_overdues(now_iso, limit=5):
         if conn:
             conn.close()
 
+def drop_task(chat_id, task_id):
+    """Помечает задачу как dropped"""
+    conn = None
+    try:
+        conn = db_connect()
+        c = conn.cursor()
+        c.execute("UPDATE tasks SET status='dropped' WHERE chat_id=? AND id=? AND status!='done';", (chat_id, task_id))
+        changed = c.rowcount
+        conn.commit()
+        if changed > 0:
+            logger.info(f"Task #{task_id} marked as dropped")
+        return changed > 0
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error(f"Failed to drop task: {e}", exc_info=True)
+        return False
+    finally:
+        if conn:
+            conn.close()
+
 def list_week_tasks(chat_id, start_iso, end_iso):
     """Список задач на неделю (SQL фильтрация вместо Python)"""
     conn = None

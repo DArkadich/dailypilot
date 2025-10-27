@@ -12,7 +12,7 @@ from telegram.error import TelegramError
 from .config import ALLOWED_USER_ID, TZINFO
 from .db import (
     add_task, list_inbox, list_open_tasks, list_today,
-    mark_done, snooze_task, iso_utc, list_week_tasks
+    mark_done, snooze_task, iso_utc, list_week_tasks, drop_task
 )
 from .ai import transcribe_ogg_to_text, parse_task
 from .metrics import Metrics
@@ -311,6 +311,24 @@ async def cmd_snooze(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error in cmd_snooze: {e}", exc_info=True)
         await update.message.reply_text("❌ Ошибка при переносе задачи.")
 
+async def cmd_drop(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Убирает задачу из плана (помечает как dropped)"""
+    if not ensure_allowed(update): return
+    try:
+        if not context.args:
+            await update.message.reply_text("Формат: /drop <id>")
+            return
+        try:
+            tid = int(context.args[0])
+        except ValueError:
+            await update.message.reply_text("id должен быть числом.")
+            return
+        ok = drop_task(update.effective_chat.id, tid)
+        await update.message.reply_text("🗑 Убрал из плана." if ok else "Не нашёл задачу.")
+    except Exception as e:
+        logger.error(f"Error in cmd_drop: {e}", exc_info=True)
+        await update.message.reply_text("❌ Ошибка при удалении задачи.")
+
 async def cmd_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     try:
@@ -508,4 +526,4 @@ async def cmd_commit_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
-    await update.message.reply_text("Команды: /add /inbox /plan /done /snooze /week /export /stats /health /push_week /pull_week /sync_notion /generate_week /merge_inbox /commit_week")
+    await update.message.reply_text("Команды: /add /inbox /plan /done /snooze /drop /week /export /stats /health /push_week /pull_week /sync_notion /generate_week /merge_inbox /commit_week")

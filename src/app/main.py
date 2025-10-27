@@ -9,7 +9,7 @@ from .handlers import (
     cmd_start, cmd_add, msg_voice, cmd_inbox, cmd_plan,
     cmd_done, cmd_snooze, cmd_week, cmd_export, cmd_unknown, cmd_stats, cmd_health,
     cmd_push_week, cmd_pull_week, cmd_sync_notion, cmd_generate_week,
-    cmd_merge_inbox, cmd_commit_week
+    cmd_merge_inbox, cmd_commit_week, cmd_drop
 )
 
 def main():
@@ -26,6 +26,7 @@ def main():
     app.add_handler(CommandHandler("plan", cmd_plan))
     app.add_handler(CommandHandler("done", cmd_done))
     app.add_handler(CommandHandler("snooze", cmd_snooze))
+    app.add_handler(CommandHandler("drop", cmd_drop))
     app.add_handler(CommandHandler("week", cmd_week))
     app.add_handler(CommandHandler("export", cmd_export))
     app.add_handler(CommandHandler("stats", cmd_stats))
