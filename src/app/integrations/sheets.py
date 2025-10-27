@@ -127,6 +127,16 @@ def export_week_from_bot_to_sheets():
 
     return len(df_week), len(df_days)
 
+def _norm_title(s: str) -> str:
+    import re
+    s = (s or "").strip().lower()
+    s = re.sub(r"[^\w\s\-]+", "", s, flags=re.U)   # убрать знаки
+    s = re.sub(r"\s+", " ", s, flags=re.U)         # схлопнуть пробелы
+    repl = {"хореи":"хориен", "хориэн":"хориен"}   # частые опечатки под себя
+    for k,v in repl.items():
+        s = s.replace(k, v)
+    return s
+
 def import_week_from_sheets_to_bot():
     """Читает Week_Tasks из Google Sheets и добавляет/обновляет задачи в боте с дедлайнами недели."""
     sh = _open_sheet()
@@ -134,14 +144,29 @@ def import_week_from_sheets_to_bot():
     data = ws.get_all_records()
     if not data:
         return 0
+    
+    # Собрать последние открытые для антидублей
+    from ..db import add_task, iso_utc, db_connect
+    conn = db_connect()
+    c = conn.cursor()
+    c.execute("SELECT id,title,context FROM tasks WHERE status='open' ORDER BY id DESC LIMIT 200;")
+    open_rows = c.fetchall()
+    conn.close()
+    cache = {(_norm_title(r["title"]), (r["context"] or "").lower()): r["id"] for r in open_rows}
+    
     # Запишем каждую строку как задачу (если нет task_id в Notes) — добавим новую.
-    from ..db import add_task, iso_utc
     from ..handlers import compute_priority, estimate_minutes, parse_human_dt, now_local
     added = 0
     for row in data:
         title = row.get("Task","").strip()
         if not title: continue
         ctx = row.get("Direction","System") or "System"
+        
+        # Фильтр дубликатов по нормализованному имени+контексту
+        key = (_norm_title(title), (ctx or "").lower())
+        if key in cache:
+            continue  # уже есть в базе — не создаём второй раз
+        
         due = row.get("Deadline","")
         due_dt = parse_human_dt(due) if due else None
         est = estimate_minutes(title)
