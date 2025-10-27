@@ -1,6 +1,8 @@
 import json
 import logging
+import re
 from datetime import datetime, timedelta, timezone
+from difflib import SequenceMatcher
 import dateparser
 from dateutil import tz as dateutil_tz
 from telegram import Update
@@ -169,8 +171,69 @@ async def cmd_inbox(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error in cmd_inbox: {e}", exc_info=True)
         await update.message.reply_text("❌ Ошибка при получении задач.")
 
+def _norm_title(s: str) -> str:
+    s = (s or "").strip().lower()
+    s = re.sub(r"[^\w\s\-]+", "", s, flags=re.U)   # убрать знаки
+    s = re.sub(r"\s+", " ", s, flags=re.U)         # схлопнуть пробелы
+    repl = {"хореи":"хориен", "хориэн":"хориен"}   # частые опечатки под себя
+    for k,v in repl.items():
+        s = s.replace(k, v)
+    return s
+
+def _dedupe_rows(rows, similarity=0.92):
+    """
+    rows — список sqlite Row (с полями id,title,context,due_at,priority,est_minutes)
+    Оставляем один экземпляр на нормализованный заголовок.
+    Если два заголовка «похожи» (SequenceMatcher ≥ similarity) — считаем дубликатами.
+    Выживает тот, у кого:
+      1) есть due_at и он раньше, затем
+      2) выше priority, затем
+      3) меньше est_minutes.
+    """
+    kept = []
+    reps = []  # id дублей (для инфы/возможного авто-drop в будущем)
+    def better(a, b):
+        # вернёт True, если a лучше b
+        from datetime import datetime
+        def parse_due(x):
+            try:
+                return datetime.fromisoformat(x["due_at"]) if x["due_at"] else None
+            except Exception:
+                return None
+        ad, bd = parse_due(a), parse_due(b)
+        if ad and bd and ad != bd:
+            return ad < bd
+        if (ad is not None) != (bd is not None):
+            return ad is not None
+        if int(a["priority"]) != int(b["priority"]):
+            return int(a["priority"]) > int(b["priority"])
+        return int(a["est_minutes"] or 999) < int(b["est_minutes"] or 999)
+
+    for r in rows:
+        tit = r["title"] or ""
+        norm = _norm_title(tit)
+        placed = False
+        for i, k in enumerate(kept):
+            kt = k["title"]
+            if _norm_title(kt) == norm or SequenceMatcher(None, _norm_title(kt), norm).ratio() >= similarity:
+                # конфликт — выбираем лучший
+                if better(r, k):
+                    reps.append(k["id"])
+                    kept[i] = r
+                else:
+                    reps.append(r["id"])
+                placed = True
+                break
+        if not placed:
+            kept.append(r)
+    return kept, reps
+
 def _pick_plan(rows):
-    if not rows: return [], [], []
+    # ДОБАВЛЕНО: антидубли
+    rows, _reps = _dedupe_rows(rows)
+
+    if not rows: 
+        return [], [], []
     frog = rows[0:1]
     stones = rows[1:4]
     sand = rows[4:]
