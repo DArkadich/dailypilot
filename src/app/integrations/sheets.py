@@ -1,6 +1,7 @@
 import os
 import pandas as pd
 import gspread
+from gspread.utils import rowcol_to_a1
 from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
 from ..db import db_connect
@@ -138,39 +139,94 @@ def _norm_title(s: str) -> str:
     return s
 
 def import_week_from_sheets_to_bot():
-    """Читает Week_Tasks из Google Sheets и добавляет/обновляет задачи в боте с дедлайнами недели."""
+    """Читает Week_Tasks в Sheets и добавляет задачи в БД бота с дедлайнами.
+       Пишет обратно Bot_ID в ту же строку, меняет Status -> in_progress."""
     sh = _open_sheet()
     ws = sh.worksheet(SHEET_WEEK_TASKS)
-    data = ws.get_all_records()
-    if not data:
+
+    # --- Заголовки и подготовка колонок ---
+    header = ws.row_values(1)
+    def need_col(name):
+        return name not in header
+    if need_col("Bot_ID"):
+        header.append("Bot_ID")
+        ws.update_cell(1, len(header), "Bot_ID")
+    if need_col("Notes"):
+        header.append("Notes")
+        ws.update_cell(1, len(header), "Notes")
+
+    header = ws.row_values(1)
+    col = {name: (idx+1) for idx, name in enumerate(header)}  # 1-based
+
+    rows = ws.get_all_values()[1:]  # без заголовка
+    if not rows:
         return 0
-    
-    # Собрать последние открытые для антидублей
+
     from ..db import add_task, iso_utc, db_connect
+    from ..handlers import compute_priority, estimate_minutes, parse_human_dt, now_local
+
+    # Собрать последние открытые для антидублей
     conn = db_connect()
     c = conn.cursor()
     c.execute("SELECT id,title,context FROM tasks WHERE status='open' ORDER BY id DESC LIMIT 200;")
     open_rows = c.fetchall()
     conn.close()
     cache = {(_norm_title(r["title"]), (r["context"] or "").lower()): r["id"] for r in open_rows}
-    
-    # Запишем каждую строку как задачу (если нет task_id в Notes) — добавим новую.
-    from ..handlers import compute_priority, estimate_minutes, parse_human_dt, now_local
+
     added = 0
-    for row in data:
-        title = row.get("Task","").strip()
-        if not title: continue
-        ctx = row.get("Direction","System") or "System"
-        
-        # Фильтр дубликатов по нормализованному имени+контексту
-        key = (_norm_title(title), (ctx or "").lower())
+    writeback = []
+    nowl = now_local()
+
+    for r_idx, row in enumerate(rows, start=2):  # 2 = первая строка данных
+        status = (row[col.get("Status", 0)-1] or "").strip().lower() if "Status" in col else ""
+        if status and status not in ("planned", "in_progress"):
+            continue
+        title = (row[col.get("Task", 0)-1] or "").strip()
+        if not title:
+            continue
+        bot_id_cell = row[col.get("Bot_ID", 0)-1] if "Bot_ID" in col else ""
+        if bot_id_cell:
+            continue  # уже импортировано
+
+        direction = (row[col.get("Direction", 0)-1] or "System").strip() if "Direction" in col else "System"
+        outcome = (row[col.get("Outcome", 0)-1] or "").strip() if "Outcome" in col else ""
+        deadline_val = (row[col.get("Deadline", 0)-1] or "").strip() if "Deadline" in col else ""
+
+        # антидубли
+        key = (_norm_title(title), (direction or "").lower())
         if key in cache:
-            continue  # уже есть в базе — не создаём второй раз
-        
-        due = row.get("Deadline","")
-        due_dt = parse_human_dt(due) if due else None
+            continue
+
+        due_dt = parse_human_dt(deadline_val) if deadline_val else None
         est = estimate_minutes(title)
         pr = compute_priority(title, due_dt, est)
-        add_task(0, title, row.get("Outcome",""), ctx, iso_utc(due_dt), iso_utc(now_local()), pr, est, "sheets")
+
+        new_id = add_task(
+            0,
+            title,
+            outcome,
+            direction,
+            iso_utc(due_dt) if due_dt else None,
+            iso_utc(nowl),
+            pr,
+            est,
+            "sheets"
+        )
         added += 1
+
+        # Пишем обратно Bot_ID и статус
+        writeback.append({
+            "range": rowcol_to_a1(r_idx, col["Bot_ID"]),
+            "values": [[str(new_id)]]
+        })
+        writeback.append({
+            "range": rowcol_to_a1(r_idx, col["Status"]),
+            "values": [["in_progress"]]
+        })
+
+    # batch writeback
+    if writeback:
+        body = {"valueInputOption": "USER_ENTERED", "data": [{"range": i["range"], "values": i["values"]} for i in writeback]}
+        ws.spreadsheet.values_batch_update(body)
+
     return added
