@@ -16,6 +16,7 @@ from .db import (
 )
 from .ai import transcribe_ogg_to_text, parse_task
 from .metrics import Metrics
+from .integrations.sheets import append_reflection
 
 logger = logging.getLogger(__name__)
 metrics = Metrics()
@@ -523,6 +524,60 @@ async def cmd_commit_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Error in cmd_commit_week: {e}", exc_info=True)
         await update.message.reply_text(f"❌ Ошибка фиксации недели: {e}")
+
+async def cmd_reflect(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Запускает рефлексию: показывает план и задаёт вопросы. Ответ можно одним сообщением (3 строки)."""
+    if not ensure_allowed(update): return
+    # Покажем краткий план
+    now = now_local()
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    end = start + timedelta(days=1)
+    rows = list_today(update.effective_chat.id, iso_utc(now), iso_utc(start), iso_utc(end))
+    if not rows:
+        rows = list_open_tasks(update.effective_chat.id)[:10]
+    frog, stones, sand = _pick_plan(rows)
+    def fmt(r):
+        return f"- {r['title']} [{r['context']}]"
+    preview = []
+    if frog:
+        preview.append("🐸 Лягушка:\n" + "\n".join(fmt(x) for x in frog))
+    if stones:
+        preview.append("◼︎ Камни:\n" + "\n".join(fmt(x) for x in stones))
+    if sand:
+        preview.append("▫︎ Песок:\n" + "\n".join(fmt(x) for x in sand[:5]))
+
+    questions = (
+        "1) Какая задача даст максимальный эффект сегодня?\n"
+        "2) Есть ли в плане то, что стоит выкинуть или делегировать?\n"
+        "3) Что может сбить твой фокус сегодня?\n\n"
+        "Ответь одним сообщением — три строки (по одному ответу в строке)."
+    )
+    text = "\n\n".join(preview) + ("\n\n" if preview else "") + questions
+    await update.message.reply_text(text)
+    # ждём следующий текст как ответы
+    context.user_data["await_reflect"] = True
+
+async def msg_text_any(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик текстовых сообщений: если ждём рефлексию — сохраняем в Sheets."""
+    if not ensure_allowed(update): return
+    if not update.message or not update.message.text:
+        return
+    if not context.user_data.get("await_reflect"):
+        return
+    context.user_data["await_reflect"] = False
+
+    lines = [l.strip() for l in update.message.text.splitlines() if l.strip()]
+    # Нормализуем до 3 ответов
+    while len(lines) < 3:
+        lines.append("")
+    main_task, skip_what, focus_trap = lines[:3]
+
+    user_label = update.effective_user.username if update.effective_user and update.effective_user.username else str(update.effective_user.id)
+    try:
+        append_reflection(main_task, skip_what, focus_trap, user_label, bot_id=str(update.effective_user.id))
+        await update.message.reply_text("🪞 Сохранено. Хорошего дня!")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Не удалось сохранить рефлексию: {e}")
 
 async def cmd_writeback_ids(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return

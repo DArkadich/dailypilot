@@ -9,7 +9,7 @@ from .handlers import (
     cmd_start, cmd_add, msg_voice, cmd_inbox, cmd_plan,
     cmd_done, cmd_snooze, cmd_week, cmd_export, cmd_unknown, cmd_stats, cmd_health,
     cmd_push_week, cmd_pull_week, cmd_sync_notion, cmd_generate_week,
-    cmd_merge_inbox, cmd_commit_week, cmd_drop, cmd_writeback_ids
+    cmd_merge_inbox, cmd_commit_week, cmd_drop, cmd_writeback_ids, cmd_reflect, msg_text_any
 )
 
 def main():
@@ -38,7 +38,10 @@ def main():
     app.add_handler(CommandHandler("merge_inbox", cmd_merge_inbox))
     app.add_handler(CommandHandler("commit_week", cmd_commit_week))
     app.add_handler(CommandHandler("writeback_ids", cmd_writeback_ids))
+    app.add_handler(CommandHandler("reflect", cmd_reflect))
 
+    # Текстовый ответ для /reflect
+    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), msg_text_any))
     app.add_handler(MessageHandler(filters.VOICE & (~filters.COMMAND), msg_voice))
     app.add_handler(MessageHandler(filters.COMMAND, cmd_unknown))
 

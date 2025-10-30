@@ -14,6 +14,7 @@ GCP_CREDS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
 SHEET_WEEK_TASKS = "Week_Tasks"
 SHEET_DAYS = "Days"
 SHEET_MOTIVATION = "Motivation"
+SHEET_REFLECTIONS = "Reflections"
 
 def _client():
     if not SPREADSHEET_ID or not GCP_CREDS:
@@ -230,3 +231,32 @@ def import_week_from_sheets_to_bot():
         ws.spreadsheet.values_batch_update(body)
 
     return added
+
+def append_reflection(main_task: str, skip_what: str, focus_trap: str, user_label: str, bot_id: str = ""):
+    """Добавляет строку в лист Reflections: Date, Main_Task, Skip_What, Focus_Trap, Bot_ID, User.
+       Создаёт лист и заголовок при отсутствии."""
+    sh = _open_sheet()
+    try:
+        ws = sh.worksheet(SHEET_REFLECTIONS)
+    except Exception:
+        ws = sh.add_worksheet(title=SHEET_REFLECTIONS, rows=100, cols=10)
+        ws.update([[
+            "Date","Main_Task","Skip_What","Focus_Trap","Bot_ID","User"
+        ]])
+
+    header = ws.row_values(1)
+    # Гарантируем требуемые колонки
+    required = ["Date","Main_Task","Skip_What","Focus_Trap","Bot_ID","User"]
+    if header != required:
+        # Приводим первый ряд к нужным колонкам
+        ws.update_cell(1, 1, "Date")
+        ws.update_cell(1, 2, "Main_Task")
+        ws.update_cell(1, 3, "Skip_What")
+        ws.update_cell(1, 4, "Focus_Trap")
+        ws.update_cell(1, 5, "Bot_ID")
+        ws.update_cell(1, 6, "User")
+
+    from datetime import datetime
+    from ..config import TZINFO
+    date_str = datetime.now(TZINFO).strftime("%Y-%m-%d")
+    ws.append_row([date_str, main_task or "", skip_what or "", focus_trap or "", bot_id or "", user_label or ""], value_input_option="USER_ENTERED")
