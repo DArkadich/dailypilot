@@ -524,6 +524,74 @@ async def cmd_commit_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error in cmd_commit_week: {e}", exc_info=True)
         await update.message.reply_text(f"❌ Ошибка фиксации недели: {e}")
 
+async def cmd_writeback_ids(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not ensure_allowed(update): return
+    try:
+        from .integrations.sheets import _open_sheet, SHEET_WEEK_TASKS
+        from gspread.utils import rowcol_to_a1
+        from .db import db_connect
+
+        sh = _open_sheet()
+        ws = sh.worksheet(SHEET_WEEK_TASKS)
+        header = ws.row_values(1)
+        col = {name: (idx+1) for idx, name in enumerate(header)}
+        if "Bot_ID" not in col:
+            header.append("Bot_ID")
+            ws.update_cell(1, len(header), "Bot_ID")
+            header = ws.row_values(1)
+            col = {name: (idx+1) for idx, name in enumerate(header)}
+
+        rows = ws.get_all_values()[1:]
+        if not rows:
+            await update.message.reply_text("Нет строк в Week_Tasks.")
+            return
+
+        # Загружаем открытые задачи из БД
+        conn = db_connect()
+        c = conn.cursor()
+        c.execute("""
+          SELECT id,title,context,due_at FROM tasks
+          WHERE status='open'
+        """)
+        tasks = c.fetchall()
+        conn.close()
+
+        def norm(s):
+            return " ".join((s or "").strip().lower().replace("ё","е").split())
+
+        # Индекс по (context,title,deadline)
+        idx = {}
+        for t in tasks:
+            ctx = norm(t["context"])
+            ttl = norm(t["title"])
+            ddl = (t["due_at"] or "")[:10]
+            idx.setdefault((ctx, ttl, ddl), []).append(t["id"])
+
+        wb = []
+        matched = 0
+        for r_idx, row in enumerate(rows, start=2):
+            title = (row[col["Task"]-1] or "").strip() if "Task" in col else ""
+            if not title:
+                continue
+            if "Bot_ID" in col and (row[col["Bot_ID"]-1] or "").strip():
+                continue  # уже есть
+            ctx = norm(row[col["Direction"]-1] if "Direction" in col else "")
+            ttl = norm(title)
+            ddl = (row[col["Deadline"]-1] or "")[:10] if "Deadline" in col else ""
+            key = (ctx, ttl, ddl)
+            if key in idx and idx[key]:
+                t_id = idx[key].pop(0)
+                wb.append({"range": rowcol_to_a1(r_idx, col["Bot_ID"]), "values": [[str(t_id)]]})
+                matched += 1
+
+        if wb:
+            body = {"valueInputOption": "USER_ENTERED", "data": [{"range": i["range"], "values": i["values"]} for i in wb]}
+            ws.spreadsheet.values_batch_update(body)
+
+        await update.message.reply_text(f"✅ Заполнено Bot_ID для {matched} строк.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка writeback: {e}")
+
 async def cmd_unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     await update.message.reply_text("Команды: /add /inbox /plan /done /snooze /drop /week /export /stats /health /push_week /pull_week /sync_notion /generate_week /merge_inbox /commit_week")
