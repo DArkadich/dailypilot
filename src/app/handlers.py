@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import hashlib
 from datetime import datetime, timedelta, timezone
 from difflib import SequenceMatcher
 import dateparser
@@ -1079,7 +1080,6 @@ async def cmd_can_take(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # 4. Сохраняем текст задачи в контексте для обработки callback
         # Используем hash для уникальности, чтобы избежать конфликтов
-        import hashlib
         task_hash = hashlib.md5(user_input.encode()).hexdigest()[:8]
         context.user_data[f'can_take_task_{task_hash}'] = user_input
         
