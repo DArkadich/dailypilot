@@ -9,6 +9,7 @@ services:
     volumes:
       - db_data:/app/db    # БД
       - ./secrets:/secrets:ro  # GCP credentials (read-only)
+      - ./src:/app/src:ro  # Исходный код (read-only для безопасности, можно убрать :ro для разработки)
     networks:
       - dailypilot_net
 
