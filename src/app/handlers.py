@@ -5,9 +5,9 @@ from datetime import datetime, timedelta, timezone
 from difflib import SequenceMatcher
 import dateparser
 from dateutil import tz as dateutil_tz
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ChatAction, ParseMode
-from telegram.ext import ContextTypes
+from telegram.ext import ContextTypes, CallbackQueryHandler
 from telegram.error import TelegramError
 from .config import ALLOWED_USER_ID, TZINFO
 from .db import (
@@ -943,6 +943,240 @@ async def cmd_calendar_advice(update: Update, context: ContextTypes.DEFAULT_TYPE
         logger.error(f"Error in cmd_calendar_advice: {e}", exc_info=True)
         await update.message.reply_text(f"❌ Ошибка при генерации календарного совета: {e}")
 
+async def cmd_can_take(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда для оценки возможности взять новую задачу с рекомендациями."""
+    if not ensure_allowed(update): return
+    
+    # Получаем текст задачи из аргументов команды или просим ввести
+    user_input = " ".join(context.args) if context.args else None
+    
+    if not user_input:
+        await update.message.reply_text(
+            "📝 Введите задачу для оценки:\n"
+            "Например: `/can_take Разработать новый модуль для бота`\n"
+            "Или просто: `/can_take` и затем отправьте текст задачи.",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        # Сохраняем состояние ожидания ввода задачи
+        context.user_data['waiting_for_task'] = True
+        return
+    
+    await update.message.chat.send_action(ChatAction.TYPING)
+    
+    try:
+        from .integrations.sheets import get_active_week_tasks
+        from .db import db_connect
+        
+        # 1. Загружаем активные задачи из БД и Week_Tasks
+        active_db_tasks = list_open_tasks(update.effective_chat.id)
+        active_sheets_tasks = get_active_week_tasks()
+        
+        # Формируем список активных задач для контекста
+        tasks_context = []
+        if active_db_tasks:
+            tasks_context.append("\nАктивные задачи из бота:")
+            for t in active_db_tasks[:10]:  # Ограничиваем до 10
+                tasks_context.append(f"  - #{t['id']}: {t['title']} [{t['context']}] (~{t.get('est_minutes', 0)} мин)")
+        
+        if active_sheets_tasks:
+            tasks_context.append("\nАктивные задачи из Week_Tasks:")
+            for t in active_sheets_tasks[:10]:
+                tasks_context.append(f"  - {t['Task']} [{t['Direction']}] ({t.get('Time_Estimate', '?')})")
+        
+        tasks_text = "\n".join(tasks_context) if tasks_context else "\nАктивных задач нет."
+        
+        # 2. Формируем промпт для GPT
+        prompt = f"""
+Ты — AI-ассистент по личной эффективности.  
+
+Пользователь ввёл новую потенциальную задачу:
+
+"{user_input}"
+
+Контекст:
+- Сейчас он уже занят: работает 6 дней в неделю с 8:00 до 19:00
+- Свободное время вечером (примерно с 20:00 до 22:30) и по воскресеньям
+- У него есть активные задачи из бота (если приложены — оцени их тоже)
+- Ты можешь опираться на прошлый опыт GPT: насколько типовая задача по длительности
+
+Активные задачи:
+{tasks_text}
+
+Твоя задача:
+1. Оцени примерное общее время выполнения этой задачи (в часах)
+2. Разбей задачу на подэтапы, если она занимает более 4 часов
+3. На основе оценки времени — сделай вывод:
+   - Может ли он взять её в ближайшие 14 дней?
+   - Хватит ли у него ресурсов (времени, энергии)?
+   - Если да — укажи примерные дни и часы, когда это можно делать
+   - Если нет — предложи альтернативу: отложить / сократить / делегировать
+
+В ответе:
+- Используй Telegram-формат (эмодзи, жирный текст)
+- Пиши кратко, по делу, структурировано
+- Не задавай вопросов, просто дай вердикт и объяснение
+
+Если в запросе есть слова "важно", "клиент", "горит", считай задачу приоритетной и предложи подвинуть другие задачи
+
+Формат ответа:
+
+📝 **Задача:** [краткое описание]
+
+⏱️ **Оценка времени:** ~[X] часов
+
+🔹 **Подзадачи:**
+- ...
+- ...
+
+📊 **Ресурсы:**
+- Свободно: ~[X] часов в ближайшие 14 дней
+- Нагрузка: средняя / высокая / критическая
+
+✅ **Рекомендация:**
+[например: Можно взять. Выполнять по вечерам Пт/Сб/Вс. Подвинуть #122.]
+
+ИЛИ:
+
+❌ Недостаточно ресурсов.  
+Предлагаю: [решение]
+
+Если хочешь — можешь включить режим "жёсткой аналитики": GPT будет жёстко резать ненужное и предлагать отказаться от слабозначимых задач.
+"""
+        
+        # 3. Отправляем в GPT
+        if not OPENAI_API_KEY:
+            await update.message.reply_text("❌ OpenAI API ключ не задан. Оценка недоступна.")
+            return
+        
+        client = get_client()
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": "Ты опытный AI-ассистент по личной эффективности. Анализируешь задачи и даёшь конкретные рекомендации по планированию."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=1000,
+                temperature=0.7,
+            )
+            ai_advice = response.choices[0].message.content
+        except Exception as openai_e:
+            logger.warning(f"GPT-4o failed, trying gpt-3.5-turbo: {openai_e}")
+            try:
+                response = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system", "content": "Ты опытный AI-ассистент по личной эффективности. Анализируешь задачи и даёшь конкретные рекомендации по планированию."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    max_tokens=1000,
+                    temperature=0.7,
+                )
+                ai_advice = response.choices[0].message.content
+            except Exception as e:
+                logger.error(f"AI assessment failed: {e}", exc_info=True)
+                ai_advice = "❌ Ошибка при получении оценки. Попробуйте позже."
+        
+        # 4. Сохраняем текст задачи в контексте для обработки callback
+        # Используем hash для уникальности, чтобы избежать конфликтов
+        import hashlib
+        task_hash = hashlib.md5(user_input.encode()).hexdigest()[:8]
+        context.user_data[f'can_take_task_{task_hash}'] = user_input
+        
+        # 5. Создаём кнопки
+        keyboard = [
+            [
+                InlineKeyboardButton("✅ Добавить в план", callback_data=f"can_take_add:{task_hash}"),
+                InlineKeyboardButton("⏸ Отложить", callback_data=f"can_take_snooze:{task_hash}")
+            ],
+            [
+                InlineKeyboardButton("❌ Удалить", callback_data=f"can_take_delete:{task_hash}")
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # 6. Отправляем ответ с кнопками
+        result_message = f"📋 *Оценка задачи*\n\n{ai_advice}"
+        await update.message.reply_text(result_message, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup)
+        
+    except Exception as e:
+        logger.error(f"Error in cmd_can_take: {e}", exc_info=True)
+        await update.message.reply_text(f"❌ Ошибка при оценке задачи: {e}")
+
+async def callback_can_take(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик callback для кнопок команды /can_take"""
+    if not ensure_allowed(update): return
+    
+    query = update.callback_query
+    await query.answer()
+    
+    try:
+        data = query.data
+        if not data.startswith("can_take_"):
+            return
+        
+        # Извлекаем action и hash задачи
+        parts = data.split(":", 1)
+        if len(parts) < 2:
+            await query.edit_message_text("❌ Ошибка: неверный формат callback.")
+            return
+        
+        action = parts[0].replace("can_take_", "")
+        task_hash = parts[1]
+        
+        # Получаем текст задачи из user_data
+        task_text = context.user_data.get(f'can_take_task_{task_hash}', '')
+        
+        if not task_text:
+            await query.edit_message_text("❌ Ошибка: текст задачи не найден. Попробуйте ещё раз.")
+            return
+        
+        if action == "add":
+            # Добавляем задачу в план
+            parsed = parse_task(task_text)
+            due_dt = parse_human_dt(parsed.get("due")) if parsed.get("due") else None
+            est = estimate_minutes(parsed["title"])
+            pr = compute_priority(parsed["title"], due_dt, est)
+            
+            tid = add_task(
+                update.effective_chat.id,
+                parsed["title"],
+                parsed["description"],
+                parsed["context"],
+                iso_utc(due_dt) if due_dt else None,
+                iso_utc(now_local()),
+                pr,
+                est,
+                "can_take"
+            )
+            
+            await query.edit_message_text(
+                f"✅ Задача добавлена в план!\n\n"
+                f"#{tid}: *{parsed['title']}*\n"
+                f"📎 [{parsed['context']}] • ⏱~{est} мин • ⚡{int(pr)}",
+                parse_mode=ParseMode.MARKDOWN
+            )
+            
+        elif action == "snooze":
+            # Откладываем задачу (можно добавить в отдельный список или просто сообщить)
+            await query.edit_message_text(
+                f"⏸ Задача отложена.\n\n"
+                f"Используйте `/add {task_text}` когда будете готовы добавить её.",
+                parse_mode=ParseMode.MARKDOWN
+            )
+            
+        elif action == "delete":
+            # Удаляем (просто подтверждаем)
+            await query.edit_message_text(
+                f"❌ Задача не добавлена.\n\n"
+                f"Если передумаете, используйте `/add {task_text}`",
+                parse_mode=ParseMode.MARKDOWN
+            )
+            
+    except Exception as e:
+        logger.error(f"Error in callback_can_take: {e}", exc_info=True)
+        await query.edit_message_text("❌ Ошибка при обработке действия.")
+
 async def cmd_unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
-    await update.message.reply_text("Команды: /add /inbox /plan /done /snooze /drop /week /export /stats /health /push_week /pull_week /sync_notion /generate_week /merge_inbox /commit_week /reflect /ai_review /weekend /calendar_advice")
+    await update.message.reply_text("Команды: /add /inbox /plan /done /snooze /drop /week /export /stats /health /push_week /pull_week /sync_notion /generate_week /merge_inbox /commit_week /reflect /ai_review /weekend /calendar_advice /can_take")

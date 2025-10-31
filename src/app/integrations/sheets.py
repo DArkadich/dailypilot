@@ -383,3 +383,28 @@ def get_week_tasks_last_14d():
         })
     
     return out
+
+def get_active_week_tasks():
+    """Возвращает активные задачи из Week_Tasks (статусы: planned, in_progress)"""
+    sh = _open_sheet()
+    try:
+        ws = sh.worksheet(SHEET_WEEK_TASKS)
+    except Exception:
+        return []
+    records = ws.get_all_records()
+    if not records:
+        return []
+    
+    active_tasks = []
+    for r in records:
+        status = (r.get("Status") or "").strip().lower()
+        if status in ("planned", "in_progress"):
+            active_tasks.append({
+                "Task": r.get("Task", ""),
+                "Direction": r.get("Direction", ""),
+                "Deadline": r.get("Deadline", ""),
+                "Time_Estimate": r.get("Time_Estimate", ""),
+                "Status": status,
+            })
+    
+    return active_tasks
