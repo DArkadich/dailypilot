@@ -291,7 +291,6 @@ async def cmd_plan_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         date_str = context.args[0].strip()
         try:
-            from datetime import date as date_type
             target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
         except ValueError:
             await update.message.reply_text("❌ Неверный формат даты. Используй: YYYY-MM-DD (например: 2025-11-05)")
