@@ -1,4 +1,5 @@
 import os
+import logging
 import pandas as pd
 import gspread
 from gspread.utils import rowcol_to_a1
@@ -6,6 +7,8 @@ from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
 from ..db import db_connect
 from ..config import TZINFO
+
+logger = logging.getLogger(__name__)
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 SPREADSHEET_ID = os.getenv("GOOGLE_SHEETS_SPREADSHEET_ID", "")
@@ -140,15 +143,12 @@ def _norm_title(s: str) -> str:
     return s
 
 def import_week_from_sheets_to_bot():
-    """Читает Week_Tasks в Sheets и добавляет задачи в БД бота с дедлайнами.
-       Пишет обратно Bot_ID в ту же строку, меняет Status -> in_progress."""
+    """Читает Week_Tasks и добавляет задачи в БД, пишет обратно Bot_ID и статус."""
     sh = _open_sheet()
     ws = sh.worksheet(SHEET_WEEK_TASKS)
 
-    # --- Заголовки и подготовка колонок ---
     header = ws.row_values(1)
-    def need_col(name):
-        return name not in header
+    def need_col(name): return name not in header
     if need_col("Bot_ID"):
         header.append("Bot_ID")
         ws.update_cell(1, len(header), "Bot_ID")
@@ -157,46 +157,38 @@ def import_week_from_sheets_to_bot():
         ws.update_cell(1, len(header), "Notes")
 
     header = ws.row_values(1)
-    col = {name: (idx+1) for idx, name in enumerate(header)}  # 1-based
+    col = {name: (idx+1) for idx, name in enumerate(header)}
 
-    rows = ws.get_all_values()[1:]  # без заголовка
-    if not rows:
-        return 0
+    rows = ws.get_all_values()[1:]
+    if not rows: return 0
 
     from ..db import add_task, iso_utc, db_connect
     from ..handlers import compute_priority, estimate_minutes, parse_human_dt, now_local
 
-    # Собрать последние открытые для антидублей
     conn = db_connect()
     c = conn.cursor()
     c.execute("SELECT id,title,context FROM tasks WHERE status='open' ORDER BY id DESC LIMIT 200;")
     open_rows = c.fetchall()
     conn.close()
+
+    def _norm_title(s): return (s or "").strip().lower().replace("ё","е")
     cache = {(_norm_title(r["title"]), (r["context"] or "").lower()): r["id"] for r in open_rows}
 
-    added = 0
-    writeback = []
-    nowl = now_local()
+    added, writeback, nowl = 0, [], now_local()
 
-    for r_idx, row in enumerate(rows, start=2):  # 2 = первая строка данных
-        status = (row[col.get("Status", 0)-1] or "").strip().lower() if "Status" in col else ""
+    for r_idx, row in enumerate(rows, start=2):
+        status = (row[col.get("Status",0)-1] or "").strip().lower()
         if status and status not in ("planned", "in_progress"):
             continue
-        title = (row[col.get("Task", 0)-1] or "").strip()
-        if not title:
-            continue
-        bot_id_cell = row[col.get("Bot_ID", 0)-1] if "Bot_ID" in col else ""
-        if bot_id_cell:
-            continue  # уже импортировано
+        title = (row[col.get("Task",0)-1] or "").strip()
+        if not title: continue
+        if "Bot_ID" in col and (row[col["Bot_ID"]-1] or "").strip(): continue
 
-        direction = (row[col.get("Direction", 0)-1] or "System").strip() if "Direction" in col else "System"
-        outcome = (row[col.get("Outcome", 0)-1] or "").strip() if "Outcome" in col else ""
-        deadline_val = (row[col.get("Deadline", 0)-1] or "").strip() if "Deadline" in col else ""
-
-        # антидубли
-        key = (_norm_title(title), (direction or "").lower())
-        if key in cache:
-            continue
+        direction = (row[col.get("Direction",0)-1] or "System").strip()
+        outcome = (row[col.get("Outcome",0)-1] or "").strip()
+        deadline_val = (row[col.get("Deadline",0)-1] or "").strip()
+        key = (_norm_title(title), direction.lower())
+        if key in cache: continue
 
         due_dt = parse_human_dt(deadline_val) if deadline_val else None
         est = estimate_minutes(title)
@@ -214,22 +206,19 @@ def import_week_from_sheets_to_bot():
             "sheets"
         )
         added += 1
+        cache[key] = new_id
 
-        # Пишем обратно Bot_ID и статус
-        writeback.append({
-            "range": rowcol_to_a1(r_idx, col["Bot_ID"]),
-            "values": [[str(new_id)]]
-        })
-        writeback.append({
-            "range": rowcol_to_a1(r_idx, col["Status"]),
-            "values": [["in_progress"]]
-        })
+        writeback.append({"range": rowcol_to_a1(r_idx, col["Bot_ID"]), "values": [[str(new_id)]]})
+        writeback.append({"range": rowcol_to_a1(r_idx, col["Status"]), "values": [["in_progress"]]})
 
-    # batch writeback
     if writeback:
-        body = {"valueInputOption": "USER_ENTERED", "data": [{"range": i["range"], "values": i["values"]} for i in writeback]}
-        ws.spreadsheet.values_batch_update(body)
+        body = {
+            "valueInputOption": "USER_ENTERED",
+            "data": [{"range": i["range"], "values": i["values"]} for i in writeback]
+        }
+        ws.spreadsheet.batch_update(body)  # ✅ исправлено: было values_batch_update
 
+    logger.info(f"Added {added} tasks from Week_Tasks")
     return added
 
 def append_reflection(main_task: str, skip_what: str, focus_trap: str, user_label: str, bot_id: str = ""):
