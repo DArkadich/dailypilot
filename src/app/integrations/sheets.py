@@ -260,3 +260,126 @@ def append_reflection(main_task: str, skip_what: str, focus_trap: str, user_labe
     from ..config import TZINFO
     date_str = datetime.now(TZINFO).strftime("%Y-%m-%d")
     ws.append_row([date_str, main_task or "", skip_what or "", focus_trap or "", bot_id or "", user_label or ""], value_input_option="USER_ENTERED")
+
+def get_week_tasks_done_last_7d():
+    """Возвращает задачи из Week_Tasks со статусом 'done' за 7 дней: [{Task, Direction, Outcome, Progress_%}]"""
+    sh = _open_sheet()
+    try:
+        ws = sh.worksheet(SHEET_WEEK_TASKS)
+    except Exception:
+        return []
+    records = ws.get_all_records()
+    if not records:
+        return []
+    from dateutil.parser import isoparse
+    from datetime import datetime, timedelta
+    now = datetime.now(TZINFO)
+    seven_days_ago = (now - timedelta(days=7)).date()
+    out = []
+    for r in records:
+        status = (r.get("Status") or "").strip().lower()
+        if status != "done":
+            continue
+        ddl = (r.get("Deadline") or "").strip()
+        try:
+            dt = isoparse(ddl).date() if ddl else None
+        except Exception:
+            dt = None
+        if dt is None or dt < seven_days_ago:
+            continue
+        out.append({
+            "Task": r.get("Task",""),
+            "Direction": r.get("Direction",""),
+            "Outcome": r.get("Outcome",""),
+            "Progress_%": r.get("Progress_%", 0)
+        })
+    return out
+
+def get_reflections_last_7d():
+    """Возвращает записи из Reflections за 7 дней: [{Date, Main_Task, Skip_What, Focus_Trap}]"""
+    sh = _open_sheet()
+    try:
+        ws = sh.worksheet(SHEET_REFLECTIONS)
+    except Exception:
+        return []
+    records = ws.get_all_records()
+    if not records:
+        return []
+    from dateutil.parser import isoparse
+    from datetime import datetime, timedelta
+    now = datetime.now(TZINFO)
+    seven_days_ago = (now - timedelta(days=7)).date()
+    out = []
+    for r in records:
+        ds = (r.get("Date") or "").strip()
+        try:
+            dt = isoparse(ds).date() if ds else None
+        except Exception:
+            dt = None
+        if dt is None or dt < seven_days_ago:
+            continue
+        out.append({
+            "Date": ds,
+            "Main_Task": r.get("Main_Task",""),
+            "Skip_What": r.get("Skip_What",""),
+            "Focus_Trap": r.get("Focus_Trap",""),
+        })
+    return out
+
+def get_week_tasks_last_14d():
+    """Возвращает задачи из Week_Tasks за последние 14 дней с полями:
+       Task, Direction, Deadline, Status, Time_Estimate, Done_At
+       Включает задачи, у которых Deadline или Done_At попадает в последние 14 дней."""
+    sh = _open_sheet()
+    try:
+        ws = sh.worksheet(SHEET_WEEK_TASKS)
+    except Exception:
+        return []
+    records = ws.get_all_records()
+    if not records:
+        return []
+    
+    from dateutil.parser import isoparse
+    from datetime import datetime, timedelta
+    now = datetime.now(TZINFO)
+    fourteen_days_ago = (now - timedelta(days=14)).date()
+    
+    out = []
+    for r in records:
+        deadline_str = (r.get("Deadline") or "").strip()
+        done_at_str = (r.get("Done_At") or "").strip()
+        
+        # Проверяем обе даты - если хотя бы одна попадает в период, включаем задачу
+        should_include = False
+        
+        if deadline_str:
+            try:
+                deadline_dt = isoparse(deadline_str).date()
+                if deadline_dt >= fourteen_days_ago:
+                    should_include = True
+            except Exception:
+                pass
+        
+        if done_at_str:
+            try:
+                done_dt = isoparse(done_at_str).date()
+                if done_dt >= fourteen_days_ago:
+                    should_include = True
+            except Exception:
+                pass
+        
+        # Если нет дат, но задача создана недавно (например, по статусу), тоже можно включить
+        # Но для строгости включаем только если есть хотя бы одна дата в периоде
+        if not should_include:
+            continue
+        
+        out.append({
+            "Task": r.get("Task", ""),
+            "Direction": r.get("Direction", ""),
+            "Deadline": deadline_str,
+            "Status": r.get("Status", ""),
+            "Time_Estimate": r.get("Time_Estimate", ""),
+            "Done_At": done_at_str,
+        })
+    
+    return out

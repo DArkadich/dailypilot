@@ -17,6 +17,9 @@ from .db import (
 from .ai import transcribe_ogg_to_text, parse_task
 from .metrics import Metrics
 from .integrations.sheets import append_reflection
+from .integrations.sheets import get_week_tasks_done_last_7d, get_reflections_last_7d
+from .ai import get_client
+from .config import OPENAI_API_KEY
 
 logger = logging.getLogger(__name__)
 metrics = Metrics()
@@ -579,6 +582,158 @@ async def msg_text_any(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Не удалось сохранить рефлексию: {e}")
 
+async def cmd_ai_review(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not ensure_allowed(update): return
+    if not OPENAI_API_KEY:
+        await update.message.reply_text("❌ Не задан OPENAI_API_KEY.")
+        return
+    try:
+        tasks = get_week_tasks_done_last_7d()
+        refl = get_reflections_last_7d()
+
+        def fmt_tasks(xs):
+            if not xs: return "(no done tasks)"
+            lines = []
+            for x in xs:
+                lines.append(f"- [{x['Direction']}] {x['Task']} — outcome: {x.get('Outcome','')} (progress: {x.get('Progress_%',0)}%)")
+            return "\n".join(lines)
+
+        def fmt_refl(xs):
+            if not xs: return "(no reflections)"
+            lines = []
+            for x in xs:
+                lines.append(f"- {x['Date']}: Main={x['Main_Task']}; Skip={x['Skip_What']}; Trap={x['Focus_Trap']}")
+            return "\n".join(lines)
+
+        prompt = (
+            "You are an executive productivity coach. Analyze last week's data and provide insights.\n\n"
+            "Done tasks (last 7 days):\n" + fmt_tasks(tasks) + "\n\n"
+            "Reflections (last 7 days):\n" + fmt_refl(refl) + "\n\n"
+            "Please provide: 1) What worked well and why; 2) Where were problems or repeating patterns; 3) 3–5 concrete recommendations for the next week."
+        )
+
+        client = get_client()
+        # try gpt-4, fallback to gpt-3.5-turbo
+        content = None
+        try:
+            r = client.chat.completions.create(
+                model="gpt-4o",
+                temperature=0.7,
+                max_tokens=700,
+                messages=[
+                    {"role":"system","content":"You analyze productivity and planning logs concisely."},
+                    {"role":"user","content":prompt}
+                ]
+            )
+            content = r.choices[0].message.content
+        except Exception:
+            r = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                temperature=0.7,
+                max_tokens=700,
+                messages=[
+                    {"role":"system","content":"You analyze productivity and planning logs concisely."},
+                    {"role":"user","content":prompt}
+                ]
+            )
+            content = r.choices[0].message.content
+
+        # Разбиваем на секции по заголовкам, если ИИ уже форматировал; иначе просто выводим
+        out = content or "(no answer)"
+        await update.message.reply_text(
+            "✅ Что сработало\n" + out,
+            disable_web_page_preview=True
+        )
+    except Exception as e:
+        logger.error(f"Error in cmd_ai_review: {e}", exc_info=True)
+        await update.message.reply_text(f"❌ Ошибка AI-анализа: {e}")
+
+async def cmd_weekend(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not ensure_allowed(update): return
+    try:
+        # Данные за 7 дней
+        tasks = get_week_tasks_done_last_7d()
+        refl = get_reflections_last_7d()
+
+        # Баланс по контекстам
+        by_ctx = {}
+        for t in tasks:
+            ctx = (t.get("Direction") or "").strip()
+            by_ctx[ctx] = by_ctx.get(ctx, 0) + 1
+        ctx_lines = [f"- {k}: {v}" for k, v in sorted(by_ctx.items(), key=lambda x: (-x[1], x[0]))]
+        if not ctx_lines:
+            ctx_lines = ["(no data)"]
+
+        # Проверка сегодняшней рефлексии
+        from datetime import datetime
+        today = datetime.now(TZINFO).strftime("%Y-%m-%d")
+        did_reflect_today = any((x.get("Date") or "").startswith(today) for x in refl)
+
+        # AI обзор (мягкий fallback)
+        ai_block = "(AI review skipped)"
+        if OPENAI_API_KEY:
+            try:
+                def fmt_tasks(xs):
+                    if not xs: return "(no done tasks)"
+                    return "\n".join([f"- [{x['Direction']}] {x['Task']} — outcome: {x.get('Outcome','')} (progress: {x.get('Progress_%',0)}%)" for x in xs])
+                def fmt_refl(xs):
+                    if not xs: return "(no reflections)"
+                    return "\n".join([f"- {x['Date']}: Main={x['Main_Task']}; Skip={x['Skip_What']}; Trap={x['Focus_Trap']}" for x in xs])
+                prompt = (
+                    "You are an executive productivity coach. Analyze last week's data and provide insights.\n\n"
+                    "Done tasks (last 7 days):\n" + fmt_tasks(tasks) + "\n\n"
+                    "Reflections (last 7 days):\n" + fmt_refl(refl) + "\n\n"
+                    "Please provide: 1) What worked well and why; 2) Where were problems or repeating patterns; 3) 3–5 concrete recommendations for the next week."
+                )
+                client = get_client()
+                try:
+                    r = client.chat.completions.create(
+                        model="gpt-4o",
+                        temperature=0.7,
+                        max_tokens=700,
+                        messages=[
+                            {"role":"system","content":"You analyze productivity and planning logs concisely."},
+                            {"role":"user","content":prompt}
+                        ]
+                    )
+                    ai_block = r.choices[0].message.content
+                except Exception:
+                    r = client.chat.completions.create(
+                        model="gpt-3.5-turbo",
+                        temperature=0.7,
+                        max_tokens=700,
+                        messages=[
+                            {"role":"system","content":"You analyze productivity and planning logs concisely."},
+                            {"role":"user","content":prompt}
+                        ]
+                    )
+                    ai_block = r.choices[0].message.content
+            except Exception:
+                ai_block = "(AI review unavailable)"
+
+        # Сборка отчёта
+        lines = []
+        lines.append("✅ Что сработало / ⚠️ Где были проблемы / 📌 Рекомендации от ИИ")
+        lines.append(ai_block)
+        lines.append("")
+        lines.append("📊 Баланс по контекстам (done за 7 дней):")
+        lines += ctx_lines
+        if not did_reflect_today:
+            lines.append("")
+            lines.append("⚠️ Сегодня рефлексия не сделана. Используй /reflect")
+
+        await update.message.reply_text("\n".join(lines), disable_web_page_preview=True)
+
+        # пометим ручной запуск для планировщика выходных
+        try:
+            from .scheduler import mark_weekend_manual_invoked
+            mark_weekend_manual_invoked()
+        except Exception:
+            pass
+    except Exception as e:
+        logger.error(f"Error in cmd_weekend: {e}", exc_info=True)
+        await update.message.reply_text(f"❌ Ошибка weekend-отчёта: {e}")
+
 async def cmd_writeback_ids(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     try:
@@ -647,6 +802,147 @@ async def cmd_writeback_ids(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Ошибка writeback: {e}")
 
+async def cmd_calendar_advice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда для получения AI-советов по планированию на основе истории выполнения задач."""
+    if not ensure_allowed(update): return
+    await update.message.chat.send_action(ChatAction.TYPING)
+    
+    try:
+        from .integrations.sheets import get_week_tasks_last_14d
+        from collections import defaultdict
+        from dateutil.parser import isoparse
+        
+        # 1. Получаем данные за 14 дней
+        tasks = get_week_tasks_last_14d()
+        
+        if not tasks:
+            await update.message.reply_text("❌ Нет данных за последние 14 дней для анализа.")
+            return
+        
+        # 2. Группируем данные
+        # По дню недели
+        by_weekday = defaultdict(int)
+        # По времени выполнения (часы)
+        by_hour = defaultdict(int)
+        # По Direction и дню недели
+        by_direction_weekday = defaultdict(lambda: defaultdict(int))
+        # По Direction
+        by_direction = defaultdict(int)
+        
+        weekdays = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
+        
+        for task in tasks:
+            direction = task.get("Direction", "Unknown")
+            done_at = task.get("Done_At", "")
+            deadline = task.get("Deadline", "")
+            
+            # Используем Done_At для анализа времени выполнения
+            date_str = done_at if done_at else deadline
+            
+            if date_str:
+                try:
+                    dt = isoparse(date_str)
+                    weekday_idx = dt.weekday()  # 0 = понедельник
+                    weekday_name = weekdays[weekday_idx]
+                    
+                    by_weekday[weekday_name] += 1
+                    by_direction[direction] += 1
+                    by_direction_weekday[direction][weekday_name] += 1
+                    
+                    # Извлекаем час выполнения
+                    hour = dt.hour
+                    by_hour[hour] += 1
+                except Exception:
+                    pass
+        
+        # 3. Формируем сводку
+        summary_lines = []
+        summary_lines.append("📊 Анализ выполнения задач за последние 14 дней:\n")
+        
+        # Самые продуктивные дни
+        if by_weekday:
+            summary_lines.append("📅 Задачи по дням недели:")
+            sorted_weekdays = sorted(by_weekday.items(), key=lambda x: x[1], reverse=True)
+            for day, count in sorted_weekdays[:7]:
+                summary_lines.append(f"  {day}: {count} задач")
+            summary_lines.append("")
+        
+        # Самые продуктивные часы
+        if by_hour:
+            summary_lines.append("⏰ Задачи по времени выполнения:")
+            sorted_hours = sorted(by_hour.items(), key=lambda x: x[1], reverse=True)
+            for hour, count in sorted_hours[:5]:
+                summary_lines.append(f"  {hour:02d}:00: {count} задач")
+            summary_lines.append("")
+        
+        # Контексты по дням недели
+        if by_direction_weekday:
+            summary_lines.append("🎯 Контексты по дням недели:")
+            for direction in sorted(by_direction.keys()):
+                direction_tasks = by_direction_weekday[direction]
+                if direction_tasks:
+                    summary_lines.append(f"  {direction}:")
+                    sorted_days = sorted(direction_tasks.items(), key=lambda x: x[1], reverse=True)
+                    for day, count in sorted_days[:3]:
+                        summary_lines.append(f"    {day}: {count} задач")
+            summary_lines.append("")
+        
+        summary_text = "\n".join(summary_lines)
+        
+        # 4. Формируем промпт для GPT
+        ai_prompt = f"""На основе этой истории выполнения задач за последние 14 дней:
+
+{summary_text}
+
+Проанализируй паттерны и дай рекомендации:
+1. В какие дни недели и часы лучше планировать разные типы задач (контексты)?
+2. Какие контексты лучше делать в какие дни?
+3. Дай 3-5 практических рекомендаций по персональному планированию на следующую неделю.
+
+Ответь на русском языке, структурированно и конкретно."""
+        
+        # 5. Отправляем в GPT
+        if not OPENAI_API_KEY:
+            await update.message.reply_text("❌ OpenAI API ключ не задан. AI-совет недоступен.")
+            return
+        
+        client = get_client()
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": "Ты опытный коуч по тайм-менеджменту и персональному планированию. Анализируешь паттерны выполнения задач и даёшь практические рекомендации."},
+                    {"role": "user", "content": ai_prompt}
+                ],
+                max_tokens=800,
+                temperature=0.7,
+            )
+            ai_advice = response.choices[0].message.content
+        except Exception as openai_e:
+            logger.warning(f"GPT-4o failed, trying gpt-3.5-turbo: {openai_e}")
+            try:
+                response = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system", "content": "Ты опытный коуч по тайм-менеджменту и персональному планированию. Анализируешь паттерны выполнения задач и даёшь практические рекомендации."},
+                        {"role": "user", "content": ai_prompt}
+                    ],
+                    max_tokens=800,
+                    temperature=0.7,
+                )
+                ai_advice = response.choices[0].message.content
+            except Exception as e:
+                logger.error(f"AI review failed: {e}", exc_info=True)
+                ai_advice = "❌ Ошибка при получении AI-совета. Попробуйте позже."
+        
+        # 6. Отправляем ответ в Telegram
+        result_message = f"📅 *Совет по планированию от AI-помощника*\n\n{ai_advice}"
+        await update.message.reply_text(result_message, parse_mode=ParseMode.MARKDOWN)
+        
+    except Exception as e:
+        logger.error(f"Error in cmd_calendar_advice: {e}", exc_info=True)
+        await update.message.reply_text(f"❌ Ошибка при генерации календарного совета: {e}")
+
 async def cmd_unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
-    await update.message.reply_text("Команды: /add /inbox /plan /done /snooze /drop /week /export /stats /health /push_week /pull_week /sync_notion /generate_week /merge_inbox /commit_week")
+    await update.message.reply_text("Команды: /add /inbox /plan /done /snooze /drop /week /export /stats /health /push_week /pull_week /sync_notion /generate_week /merge_inbox /commit_week /reflect /ai_review /weekend /calendar_advice")

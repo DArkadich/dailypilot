@@ -11,6 +11,8 @@ from .backup import create_backup
 logger = logging.getLogger(__name__)
 # Хранилище уже отправленных напоминаний (id задачи -> время)
 _sent_reminders = {}
+_weekend_manual_date = None
+_weekend_last_sent = None
 
 def backup_scheduler():
     """Отдельный поток для бэкапов БД каждый час"""
@@ -71,6 +73,46 @@ def start_reminder_loop(app):
                 time.sleep(60)
     
     logger.info("Starting reminder loop")
+    th = threading.Thread(target=loop, daemon=True)
+    th.start()
+
+def mark_weekend_manual_invoked():
+    from datetime import datetime
+    global _weekend_manual_date
+    _weekend_manual_date = datetime.now(TZINFO).date()
+
+def start_weekend_scheduler(app):
+    """По воскресеньям в 22:00 отправляет weekend-отчёт, если не запускали вручную до 21:30."""
+    def loop():
+        global _weekend_last_sent
+        from datetime import datetime, time
+        while True:
+            try:
+                now = datetime.now(TZINFO)
+                if now.weekday() == 6:  # Sunday
+                    today = now.date()
+                    # если ещё не отправляли
+                    if _weekend_last_sent != today:
+                        # если не было ручного запуска (или дата не сегодняшняя) и время >= 22:00
+                        if not (_weekend_manual_date == today) and (now.hour >= 22):
+                            # Сформировать краткий отчёт (облегчённый, без GPT при сбое)
+                            try:
+                                from .integrations.sheets import get_week_tasks_done_last_7d, get_reflections_last_7d
+                                tasks = get_week_tasks_done_last_7d()
+                                refl = get_reflections_last_7d()
+                                by_ctx = {}
+                                for t in tasks:
+                                    ctx = (t.get("Direction") or "").strip()
+                                    by_ctx[ctx] = by_ctx.get(ctx, 0) + 1
+                                ctx_lines = [f"- {k}: {v}" for k, v in sorted(by_ctx.items(), key=lambda x: (-x[1], x[0]))] or ["(no data)"]
+                                out = ["📅 Weekend summary", "\n".join(ctx_lines)]
+                                app.bot.send_message(chat_id=ALLOWED_USER_ID, text="\n".join(out))
+                            except Exception:
+                                pass
+                            _weekend_last_sent = today
+                time.sleep(60)
+            except Exception:
+                time.sleep(60)
     th = threading.Thread(target=loop, daemon=True)
     th.start()
 
