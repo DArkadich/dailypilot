@@ -277,6 +277,65 @@ async def cmd_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error in cmd_plan: {e}", exc_info=True)
         await update.message.reply_text("❌ Ошибка при формировании плана.")
 
+async def cmd_plan_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """План на указанную дату в формате ISO (например: 2025-11-05)"""
+    if not ensure_allowed(update): return
+    try:
+        if not context.args:
+            await update.message.reply_text(
+                "📅 Использование: `/plan_date 2025-11-05`\n"
+                "Формат даты: YYYY-MM-DD (ISO)",
+                parse_mode=ParseMode.MARKDOWN
+            )
+            return
+        
+        date_str = context.args[0].strip()
+        try:
+            from datetime import date as date_type
+            target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        except ValueError:
+            await update.message.reply_text("❌ Неверный формат даты. Используй: YYYY-MM-DD (например: 2025-11-05)")
+            return
+        
+        # Формируем диапазон для выбранной даты
+        start = datetime.combine(target_date, datetime.min.time()).replace(tzinfo=TZINFO)
+        end = start + timedelta(days=1)
+        
+        # Получаем задачи на эту дату
+        rows = list_today(update.effective_chat.id, iso_utc(now_local()), iso_utc(start), iso_utc(end))
+        if not rows:
+            # Если нет задач на конкретную дату, показываем открытые задачи
+            rows = list_open_tasks(update.effective_chat.id)[:10]
+        
+        frog, stones, sand = _pick_plan(rows)
+        def fmt(r):
+            due_str = ""
+            if r["due_at"]:
+                from datetime import datetime
+                dt = datetime.fromisoformat(r["due_at"]).astimezone(TZINFO)
+                due_str = f" • 🗓 {dt.strftime('%H:%M')}"
+            return f"#{r['id']} {r['title']} — [{r['context']}] • ⚡{int(r['priority'])} • ⏱~{r['est_minutes']}м{due_str}"
+
+        date_display = target_date.strftime("%d.%m.%Y")
+        out = [f"📅 *План на {date_display}*"]
+        if frog:
+            out.append("\n🐸 *ЛЯГУШКА*")
+            out += [fmt(x) for x in frog]
+        if stones:
+            out.append("\n◼︎ *КАМНИ*")
+            out += [fmt(x) for x in stones]
+        if sand:
+            out.append("\n▫︎ *ПЕСОК*")
+            out += [fmt(x) for x in sand[:10]]
+        
+        if not frog and not stones and not sand:
+            out.append("\n_Нет задач на эту дату._")
+        
+        await update.message.reply_text("\n".join(out), parse_mode=ParseMode.MARKDOWN)
+    except Exception as e:
+        logger.error(f"Error in cmd_plan_date: {e}", exc_info=True)
+        await update.message.reply_text("❌ Ошибка при формировании плана на дату.")
+
 async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     try:
@@ -392,6 +451,25 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         productivity = metrics.get_productivity_score(update.effective_chat.id)
         
+        # Получаем статистику по контекстам
+        from .db import db_connect
+        conn = db_connect()
+        c = conn.cursor()
+        
+        # Статистика по контекстам (выполнено и открыто)
+        c.execute("""
+            SELECT context,
+                   SUM(CASE WHEN status='done' THEN 1 ELSE 0 END) as done_count,
+                   SUM(CASE WHEN status='open' THEN 1 ELSE 0 END) as open_count,
+                   COUNT(*) as total_count
+            FROM tasks
+            WHERE chat_id=?
+            GROUP BY context
+            ORDER BY total_count DESC
+        """, (update.effective_chat.id,))
+        context_stats = c.fetchall()
+        conn.close()
+        
         lines = ["📊 *Статистика*"]
         lines.append(f"\n📝 Всего задач: {stats['total_tasks']}")
         lines.append(f"✅ Выполнено: {stats['done_tasks']}")
@@ -406,10 +484,19 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if productivity > 0:
             lines.append(f"\n⚡ Productivity score: {productivity}%")
         
-        if stats['top_contexts']:
-            lines.append(f"\n🏷 *Топ контексты*")
-            for ctx in stats['top_contexts']:
-                lines.append(f"{ctx['context']}: {ctx['count']}")
+        # Статистика по контекстам
+        if context_stats:
+            lines.append(f"\n🎯 *Прогресс по контекстам*")
+            for ctx_row in context_stats:
+                ctx = ctx_row['context'] or 'Без контекста'
+                done = ctx_row['done_count']
+                open_tasks = ctx_row['open_count']
+                total = ctx_row['total_count']
+                progress_pct = int((done / total * 100)) if total > 0 else 0
+                lines.append(f"\n*{ctx}:*")
+                lines.append(f"  ✅ Выполнено: {done} ({progress_pct}%)")
+                lines.append(f"  🔄 Открыто: {open_tasks}")
+                lines.append(f"  📊 Всего: {total}")
         
         lines.append(f"\n💾 Размер БД: {stats['db_size_kb']} КБ")
         
@@ -530,7 +617,7 @@ async def cmd_commit_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Ошибка фиксации недели: {e}")
 
 async def cmd_reflect(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Запускает рефлексию: показывает план и задаёт вопросы. Ответ можно одним сообщением (3 строки)."""
+    """Запускает рефлексию в конце дня: показывает план и задаёт 5 вопросов."""
     if not ensure_allowed(update): return
     # Покажем краткий план
     now = now_local()
@@ -551,13 +638,16 @@ async def cmd_reflect(update: Update, context: ContextTypes.DEFAULT_TYPE):
         preview.append("▫︎ Песок:\n" + "\n".join(fmt(x) for x in sand[:5]))
 
     questions = (
-        "1) Какая задача даст максимальный эффект сегодня?\n"
-        "2) Есть ли в плане то, что стоит выкинуть или делегировать?\n"
-        "3) Что может сбить твой фокус сегодня?\n\n"
-        "Ответь одним сообщением — три строки (по одному ответу в строке)."
+        "🪞 *Рефлексия дня — 5 вопросов:*\n\n"
+        "1) Что сделал сегодня? (главные достижения)\n"
+        "2) Что не успел? (что переносится на завтра)\n"
+        "3) Что мешало сфокусироваться? (отвлечения, препятствия)\n"
+        "4) Какая задача даст максимальный эффект завтра?\n"
+        "5) Что нужно выкинуть или делегировать?\n\n"
+        "Ответь одним сообщением — пять строк (по одному ответу в строку)."
     )
     text = "\n\n".join(preview) + ("\n\n" if preview else "") + questions
-    await update.message.reply_text(text)
+    await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
     # ждём следующий текст как ответы
     context.user_data["await_reflect"] = True
 
@@ -571,15 +661,21 @@ async def msg_text_any(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["await_reflect"] = False
 
     lines = [l.strip() for l in update.message.text.splitlines() if l.strip()]
-    # Нормализуем до 3 ответов
-    while len(lines) < 3:
+    # Нормализуем до 5 ответов
+    while len(lines) < 5:
         lines.append("")
-    main_task, skip_what, focus_trap = lines[:3]
+    what_done, what_not_done, what_blocked, main_task_tomorrow, skip_what = lines[:5]
+    
+    # Формируем текст для сохранения (совместимо с существующим форматом)
+    # Main_Task - главная задача на завтра
+    # Skip_What - что выкинуть/делегировать
+    # Focus_Trap - что мешало (what_blocked) + что не успел (what_not_done)
+    focus_trap = f"Не успел: {what_not_done}. Мешало: {what_blocked}"
 
     user_label = update.effective_user.username if update.effective_user and update.effective_user.username else str(update.effective_user.id)
     try:
-        append_reflection(main_task, skip_what, focus_trap, user_label, bot_id=str(update.effective_user.id))
-        await update.message.reply_text("🪞 Сохранено. Хорошего дня!")
+        append_reflection(main_task_tomorrow, skip_what, focus_trap, user_label, bot_id=str(update.effective_user.id))
+        await update.message.reply_text("🪞 Рефлексия сохранена. Хорошего дня!")
     except Exception as e:
         await update.message.reply_text(f"❌ Не удалось сохранить рефлексию: {e}")
 

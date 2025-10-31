@@ -6,7 +6,7 @@ from .config import TELEGRAM_BOT_TOKEN, LOG_LEVEL
 from .db import db_init
 from .scheduler import start_reminder_loop, start_nudges_loop, start_weekend_scheduler
 from .handlers import (
-    cmd_start, cmd_add, msg_voice, cmd_inbox, cmd_plan,
+    cmd_start, cmd_add, msg_voice, cmd_inbox, cmd_plan, cmd_plan_date,
     cmd_done, cmd_snooze, cmd_week, cmd_export, cmd_unknown, cmd_stats, cmd_health,
     cmd_push_week, cmd_pull_week, cmd_sync_notion, cmd_generate_week,
     cmd_merge_inbox, cmd_commit_week, cmd_drop, cmd_writeback_ids, cmd_reflect, msg_text_any, cmd_ai_review, cmd_weekend, cmd_calendar_advice, cmd_can_take, callback_can_take
@@ -24,6 +24,7 @@ def main():
     app.add_handler(CommandHandler("add", cmd_add))
     app.add_handler(CommandHandler("inbox", cmd_inbox))
     app.add_handler(CommandHandler("plan", cmd_plan))
+    app.add_handler(CommandHandler("plan_date", cmd_plan_date))
     app.add_handler(CommandHandler("done", cmd_done))
     app.add_handler(CommandHandler("snooze", cmd_snooze))
     app.add_handler(CommandHandler("drop", cmd_drop))

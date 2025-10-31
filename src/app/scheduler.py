@@ -5,7 +5,7 @@ from datetime import datetime, timezone, timedelta
 from telegram.constants import ParseMode
 from telegram.error import TelegramError
 from .db import due_overdues
-from .config import TZINFO
+from .config import TZINFO, ALLOWED_USER_ID
 from .backup import create_backup
 
 logger = logging.getLogger(__name__)
@@ -122,22 +122,81 @@ def start_nudges_loop(app):
     
     def loop():
         from datetime import datetime
-        from .config import ALLOWED_USER_ID
         
-        sent_today = {"frog": False, "reflect": False}
+        sent_today = {"frog": False, "reflect": False, "plan": False, "commit_week": False}
         while True:
             now = datetime.now(TZINFO)
             try:
+                # Утреннее напоминание о плане (07:00)
+                if now.hour == 7 and now.minute == 0 and not sent_today["plan"]:
+                    try:
+                        # Получаем план на сегодня
+                        from .db import list_today, iso_utc, db_connect
+                        from .handlers import _pick_plan
+                        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                        end = start + timedelta(days=1)
+                        rows = list_today(ALLOWED_USER_ID, iso_utc(now), iso_utc(start), iso_utc(end))
+                        if not rows:
+                            rows = db_connect().cursor().execute(
+                                "SELECT id,title,context,due_at,priority,est_minutes FROM tasks WHERE chat_id=? AND status='open' ORDER BY priority DESC LIMIT 10",
+                                (ALLOWED_USER_ID,)
+                            ).fetchall()
+                        frog, stones, sand = _pick_plan(rows)
+                        
+                        plan_lines = ["📅 *План на сегодня*"]
+                        if frog:
+                            plan_lines.append("\n🐸 *ЛЯГУШКА*")
+                            for r in frog:
+                                plan_lines.append(f"#{r['id']} {r['title']} — [{r['context']}]")
+                        if stones:
+                            plan_lines.append("\n◼︎ *КАМНИ*")
+                            for r in stones[:3]:
+                                plan_lines.append(f"#{r['id']} {r['title']} — [{r['context']}]")
+                        if sand:
+                            plan_lines.append("\n▫︎ *ПЕСОК*")
+                            for r in sand[:3]:
+                                plan_lines.append(f"#{r['id']} {r['title']} — [{r['context']}]")
+                        
+                        app.bot.send_message(
+                            chat_id=ALLOWED_USER_ID,
+                            text="\n".join(plan_lines),
+                            parse_mode="Markdown"
+                        )
+                    except Exception as e:
+                        logger.error(f"Error sending daily plan: {e}", exc_info=True)
+                        app.bot.send_message(chat_id=ALLOWED_USER_ID, text="📅 План на сегодня (/plan)")
+                    sent_today["plan"] = True
+                    logger.info("Daily plan sent")
+                
+                # Лягушка (08:00)
                 if now.hour == 8 and now.minute == 0 and not sent_today["frog"]:
                     app.bot.send_message(chat_id=ALLOWED_USER_ID, text="🐸 Напомнить: отметь лягушку дня (/plan)")
                     sent_today["frog"] = True
                     logger.info("Frog nudge sent")
+                
+                # Рефлексия (21:00)
                 if now.hour == 21 and now.minute == 0 and not sent_today["reflect"]:
-                    app.bot.send_message(chat_id=ALLOWED_USER_ID, text="🪞 Рефлексия 5 минут: открой лист Days и ответь на 5 вопросов.")
+                    app.bot.send_message(chat_id=ALLOWED_USER_ID, text="🪞 Рефлексия 5 минут: используй /reflect для ежедневной рефлексии.")
                     sent_today["reflect"] = True
                     logger.info("Reflection nudge sent")
+                
+                # Авто-обновление commit_week (03:00)
+                if now.hour == 3 and now.minute == 0 and not sent_today["commit_week"]:
+                    try:
+                        from .integrations.sheets import import_week_from_sheets_to_bot
+                        added = import_week_from_sheets_to_bot()
+                        app.bot.send_message(
+                            chat_id=ALLOWED_USER_ID,
+                            text=f"✅ Авто-синхронизация: добавлено задач из Week_Tasks: {added}"
+                        )
+                        logger.info(f"Auto commit_week: added {added} tasks")
+                    except Exception as e:
+                        logger.error(f"Error in auto commit_week: {e}", exc_info=True)
+                    sent_today["commit_week"] = True
+                
+                # Сброс флагов в полночь
                 if now.hour == 0 and now.minute == 0:
-                    sent_today = {"frog": False, "reflect": False}
+                    sent_today = {"frog": False, "reflect": False, "plan": False, "commit_week": False}
                     logger.info("Nudges reset for new day")
             except Exception as e:
                 logger.error(f"Error in nudges loop: {e}", exc_info=True)
