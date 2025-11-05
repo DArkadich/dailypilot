@@ -9,7 +9,7 @@ from .handlers import (
     cmd_start, cmd_add, msg_voice, cmd_inbox, cmd_plan, cmd_plan_date,
     cmd_done, cmd_snooze, cmd_week, cmd_export, cmd_unknown, cmd_stats, cmd_health,
     cmd_push_week, cmd_pull_week, cmd_sync_notion, cmd_generate_week,
-    cmd_merge_inbox, cmd_commit_week, cmd_drop, cmd_writeback_ids, cmd_reflect, msg_text_any, cmd_ai_review, cmd_weekend, cmd_calendar_advice, cmd_can_take, callback_can_take
+    cmd_merge_inbox, cmd_commit_week, cmd_drop, cmd_writeback_ids, cmd_reflect, msg_text_any, cmd_ai_review, cmd_weekend, cmd_calendar_advice, cmd_can_take, callback_can_take, cmd_fix_times
 )
 
 def main():
@@ -44,6 +44,7 @@ def main():
     app.add_handler(CommandHandler("weekend", cmd_weekend))
     app.add_handler(CommandHandler("calendar_advice", cmd_calendar_advice))
     app.add_handler(CommandHandler("can_take", cmd_can_take))
+    app.add_handler(CommandHandler("fix_times", cmd_fix_times))
     
     # Обработчик callback для кнопок /can_take
     app.add_handler(CallbackQueryHandler(callback_can_take, pattern="^can_take_"))

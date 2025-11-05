@@ -1280,3 +1280,43 @@ async def callback_can_take(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     await update.message.reply_text("Команды: /add /inbox /plan /done /snooze /drop /week /export /stats /health /push_week /pull_week /sync_notion /generate_week /merge_inbox /commit_week /reflect /ai_review /weekend /calendar_advice /can_take")
+
+async def cmd_fix_times(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Нормализует время задач с дедлайном 00:00 → лягушка 09:00, камни 14:00, прочее 20:00."""
+    if not ensure_allowed(update): return
+    try:
+        from .db import db_connect, snooze_task, iso_utc
+        from .config import TZINFO
+        conn = db_connect()
+        c = conn.cursor()
+        c.execute(
+            """
+          SELECT id, chat_id, title, due_at FROM tasks
+          WHERE status='open' AND due_at IS NOT NULL
+        """
+        )
+        rows = c.fetchall()
+        conn.close()
+
+        fixed = 0
+        from datetime import datetime
+        for r in rows:
+            try:
+                dt = datetime.fromisoformat(r["due_at"]).astimezone(TZINFO)
+                if dt.hour == 0 and dt.minute == 0:
+                    lt = (r["title"] or "").lower()
+                    if "лягуш" in lt:
+                        nd = dt.replace(hour=9, minute=0, second=0, microsecond=0)
+                    elif "камень" in lt:
+                        nd = dt.replace(hour=14, minute=0, second=0, microsecond=0)
+                    else:
+                        nd = dt.replace(hour=20, minute=0, second=0, microsecond=0)
+                    if snooze_task(r["chat_id"], r["id"], iso_utc(nd)):
+                        fixed += 1
+            except Exception:
+                continue
+
+        await update.message.reply_text(f"🔧 Обновлено задач: {fixed}")
+    except Exception as e:
+        logger.error(f"Error in cmd_fix_times: {e}", exc_info=True)
+        await update.message.reply_text("❌ Ошибка при нормализации времени.")

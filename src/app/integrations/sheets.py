@@ -212,6 +212,21 @@ def import_week_from_sheets_to_bot(force_new: bool = False):
             continue
 
         due_dt = parse_human_dt(deadline_val) if deadline_val else None
+        # Если в дате нет времени (00:00), расставим разумные слоты по типу задачи
+        if due_dt is not None:
+            try:
+                local_dt = due_dt.astimezone(TZINFO)
+                if local_dt.hour == 0 and local_dt.minute == 0:
+                    lt = title.lower()
+                    if "лягуш" in lt:
+                        local_dt = local_dt.replace(hour=9, minute=0, second=0, microsecond=0)
+                    elif "камень" in lt:
+                        local_dt = local_dt.replace(hour=14, minute=0, second=0, microsecond=0)
+                    else:
+                        local_dt = local_dt.replace(hour=20, minute=0, second=0, microsecond=0)
+                    due_dt = local_dt
+            except Exception:
+                pass
         est = estimate_minutes(title)
         pr = compute_priority(title, due_dt, est)
 
