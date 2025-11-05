@@ -6,6 +6,7 @@ from gspread.utils import rowcol_to_a1
 from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
 from ..db import db_connect
+from ..config import ALLOWED_USER_ID
 from ..config import TZINFO
 
 logger = logging.getLogger(__name__)
@@ -195,7 +196,7 @@ def import_week_from_sheets_to_bot():
         pr = compute_priority(title, due_dt, est)
 
         new_id = add_task(
-            0,
+            ALLOWED_USER_ID,
             title,
             outcome,
             direction,
