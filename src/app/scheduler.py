@@ -1,5 +1,5 @@
 import threading
-import time
+import time as time_mod
 import logging
 from datetime import datetime, timezone, timedelta
 from telegram.constants import ParseMode
@@ -21,10 +21,10 @@ def backup_scheduler():
             try:
                 # Делаем бэкап каждый час
                 create_backup()
-                time.sleep(3600)  # 1 час
+                time_mod.sleep(3600)  # 1 час
             except Exception as e:
                 logger.error(f"Error in backup scheduler: {e}", exc_info=True)
-                time.sleep(3600)
+                time_mod.sleep(3600)
     
     logger.info("Starting backup scheduler")
     th = threading.Thread(target=backup_loop, daemon=True)
@@ -47,7 +47,7 @@ def start_reminder_loop(app):
                     
                     # Проверяем, не отправляли ли уже напоминание за последний час
                     last_sent = _sent_reminders.get(tid, 0)
-                    if time.time() - last_sent < 3600:  # 1 час
+                    if time_mod.time() - last_sent < 3600:  # 1 час
                         continue
                     
                     try:
@@ -56,7 +56,7 @@ def start_reminder_loop(app):
                             text=f"⏰ Срок: задача #{tid} — *{title}*",
                             parse_mode=ParseMode.MARKDOWN
                         )
-                        _sent_reminders[tid] = time.time()
+                        _sent_reminders[tid] = time_mod.time()
                         logger.info(f"Reminder sent for task #{tid}: {title}")
                     except TelegramError as e:
                         logger.warning(f"Failed to send reminder for task #{tid}: {e}")
@@ -64,13 +64,13 @@ def start_reminder_loop(app):
                         logger.error(f"Unexpected error sending reminder for task #{tid}: {e}", exc_info=True)
                 
                 # Очистка старых записей (старше суток)
-                current_time = time.time()
+                current_time = time_mod.time()
                 _sent_reminders = {tid: t for tid, t in _sent_reminders.items() if current_time - t < 86400}
                 
-                time.sleep(60)
+                time_mod.sleep(60)
             except Exception as e:
                 logger.error(f"Error in reminder loop: {e}", exc_info=True)
-                time.sleep(60)
+                time_mod.sleep(60)
     
     logger.info("Starting reminder loop")
     th = threading.Thread(target=loop, daemon=True)
@@ -110,7 +110,7 @@ def start_weekend_scheduler(app):
                             except Exception:
                                 pass
                             _weekend_last_sent = today
-                time.sleep(60)
+                time_mod.sleep(60)
             except Exception:
                 time.sleep(60)
     th = threading.Thread(target=loop, daemon=True)
@@ -159,7 +159,7 @@ def start_nudges_loop(app):
                     logger.info("Nudges reset for new day")
             except Exception as e:
                 logger.error(f"Error in nudges loop: {e}", exc_info=True)
-            time.sleep(60)
+            time_mod.sleep(60)
     
     th = threading.Thread(target=loop, daemon=True)
     th.start()
