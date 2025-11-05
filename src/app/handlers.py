@@ -1409,3 +1409,110 @@ async def cmd_fix_times(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Error in cmd_fix_times: {e}", exc_info=True)
         await update.message.reply_text("❌ Ошибка при нормализации времени.")
+
+async def cmd_rebalance_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Перераспределяет задачи в пределах 7 дней: 1 лягушка, 2 камня, песок до N.
+    Использование: /rebalance_week [max_sand]
+    """
+    if not ensure_allowed(update): return
+    try:
+        # Настройки
+        max_frog = 1
+        max_stones = 2
+        max_sand = 4
+        if context.args:
+            try:
+                max_sand = int(context.args[0])
+            except Exception:
+                pass
+
+        from .db import db_connect, snooze_task, iso_utc
+        conn = db_connect()
+        c = conn.cursor()
+        from datetime import datetime, timedelta
+        start = now_local().replace(hour=0, minute=0, second=0, microsecond=0)
+        end = start + timedelta(days=7)
+        c.execute(
+            """
+              SELECT id, chat_id, title, context, due_at, priority, est_minutes
+              FROM tasks
+              WHERE chat_id=? AND status='open' AND due_at IS NOT NULL
+                AND due_at >= ? AND due_at < ?
+              ORDER BY priority DESC, est_minutes ASC
+            """,
+            (update.effective_chat.id, iso_utc(start), iso_utc(end))
+        )
+        rows = c.fetchall()
+        conn.close()
+
+        if not rows:
+            await update.message.reply_text("Нет задач для ребалансировки.")
+            return
+
+        # Группируем по дню
+        from collections import defaultdict
+        by_day = defaultdict(list)
+        for r in rows:
+            try:
+                dt = datetime.fromisoformat(r["due_at"]).astimezone(TZINFO)
+                key = dt.date()
+                by_day[key].append(r)
+            except Exception:
+                continue
+
+        def norm_title(s: str) -> str:
+            s = (s or "").lower().replace("ё","е").strip()
+            import re
+            s = re.sub(r"[^\w\s\-]+", "", s)
+            s = re.sub(r"\s+", " ", s)
+            return s
+
+        moved = 0
+        # По каждому дню оставляем лимит; лишнее переносим на следующий день
+        for d in sorted(by_day.keys()):
+            day_tasks = by_day[d]
+            # Дедуп по названию в рамках дня
+            seen = set()
+            uniq = []
+            for r in day_tasks:
+                nt = norm_title(r["title"])
+                if nt in seen:
+                    uniq.append(("overflow", r))
+                else:
+                    seen.add(nt)
+                    uniq.append(("keep", r))
+
+            frogs = []
+            stones = []
+            sand = []
+            for _, r in uniq:
+                t = (r["title"] or "").lower()
+                if "лягуш" in t:
+                    frogs.append(r)
+                elif "камень" in t:
+                    stones.append(r)
+                else:
+                    sand.append(r)
+
+            # Оставляем по лимитам
+            keep = frogs[:max_frog] + stones[:max_stones] + sand[:max_sand]
+            keep_ids = {r["id"] for r in keep}
+            overflow = [r for _, r in uniq if r["id"] not in keep_ids]
+
+            # Перенос overflow на следующий день
+            next_day = d + timedelta(days=1)
+            for r in overflow:
+                t = (r["title"] or "").lower()
+                if "лягуш" in t:
+                    nd_local = datetime.combine(next_day, datetime.min.time()).replace(tzinfo=TZINFO).replace(hour=9, minute=30)
+                elif "камень" in t:
+                    nd_local = datetime.combine(next_day, datetime.min.time()).replace(tzinfo=TZINFO).replace(hour=14, minute=30)
+                else:
+                    nd_local = datetime.combine(next_day, datetime.min.time()).replace(tzinfo=TZINFO).replace(hour=20, minute=30)
+                if snooze_task(r["chat_id"], r["id"], iso_utc(nd_local)):
+                    moved += 1
+
+        await update.message.reply_text(f"♻️ Ребалансировка выполнена. Перенесено задач: {moved}")
+    except Exception as e:
+        logger.error(f"Error in cmd_rebalance_week: {e}", exc_info=True)
+        await update.message.reply_text("❌ Ошибка ребалансировки.")
