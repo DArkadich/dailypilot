@@ -428,7 +428,23 @@ async def cmd_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 current = day
                 lines.append(f"\n*{day}*")
             lines.append(f"#{r['id']} {r['title']} — [{r['context']}] • ⏱~{r['est_minutes']}м • ⚡{int(r['priority'])} • {dt.strftime('%H:%M')}")
-        await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
+        # Пагинация: Telegram ограничивает длину сообщения
+        text = "\n".join(lines)
+        max_len = 3800
+        if len(text) <= max_len:
+            await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
+        else:
+            chunk = []
+            size = 0
+            for ln in lines:
+                if size + len(ln) + 1 > max_len:
+                    await update.message.reply_text("\n".join(chunk), parse_mode=ParseMode.MARKDOWN)
+                    chunk = []
+                    size = 0
+                chunk.append(ln)
+                size += len(ln) + 1
+            if chunk:
+                await update.message.reply_text("\n".join(chunk), parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
         logger.error(f"Error in cmd_week: {e}", exc_info=True)
         await update.message.reply_text("❌ Ошибка при получении плана на неделю.")
