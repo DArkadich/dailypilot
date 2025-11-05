@@ -171,7 +171,23 @@ async def cmd_inbox(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for r in rows:
             tid, title, ctx, due, pr = r["id"], r["title"], r["context"], r["due_at"], r["priority"]
             lines.append(f"#{tid} • {title} — [{ctx}] • ⚡{int(pr)}")
-        await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
+        # Сообщение может быть слишком длинным — режем на части
+        text = "\n".join(lines)
+        max_len = 3800  # чуть меньше лимита Telegram
+        if len(text) <= max_len:
+            await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
+        else:
+            chunk = []
+            size = 0
+            for ln in lines:
+                if size + len(ln) + 1 > max_len:
+                    await update.message.reply_text("\n".join(chunk), parse_mode=ParseMode.MARKDOWN)
+                    chunk = []
+                    size = 0
+                chunk.append(ln)
+                size += len(ln) + 1
+            if chunk:
+                await update.message.reply_text("\n".join(chunk), parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
         logger.error(f"Error in cmd_inbox: {e}", exc_info=True)
         await update.message.reply_text("❌ Ошибка при получении задач.")
