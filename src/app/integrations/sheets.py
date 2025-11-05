@@ -186,7 +186,9 @@ def import_week_from_sheets_to_bot(force_new: bool = False):
             continue
         title = (row[col.get("Task",0)-1] or "").strip()
         if not title: continue
-        if "Bot_ID" in col and (row[col["Bot_ID"]-1] or "").strip(): continue
+        # В форс-режиме не пропускаем строки с уже заполненным Bot_ID — создаём новую задачу
+        if (not force_new) and "Bot_ID" in col and (row[col["Bot_ID"]-1] or "").strip():
+            continue
 
         direction = (row[col.get("Direction",0)-1] or "System").strip()
         outcome = (row[col.get("Outcome",0)-1] or "").strip()
