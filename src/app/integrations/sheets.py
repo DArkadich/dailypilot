@@ -168,7 +168,8 @@ def import_week_from_sheets_to_bot():
 
     conn = db_connect()
     c = conn.cursor()
-    c.execute("SELECT id,title,context FROM tasks WHERE status='open' ORDER BY id DESC LIMIT 200;")
+    # Учитываем только задачи текущего пользователя
+    c.execute("SELECT id,title,context FROM tasks WHERE status='open' AND chat_id=? ORDER BY id DESC LIMIT 200;", (ALLOWED_USER_ID,))
     open_rows = c.fetchall()
     conn.close()
 
@@ -189,7 +190,22 @@ def import_week_from_sheets_to_bot():
         outcome = (row[col.get("Outcome",0)-1] or "").strip()
         deadline_val = (row[col.get("Deadline",0)-1] or "").strip()
         key = (_norm_title(title), direction.lower())
-        if key in cache: continue
+        # Если уже есть в БД, то просто записываем Bot_ID/Status/Notes обратно и идём дальше
+        if key in cache:
+            existing_id = cache[key]
+            if "Bot_ID" in col and not (row[col["Bot_ID"]-1] or "").strip():
+                writeback.append({"range": rowcol_to_a1(r_idx, col["Bot_ID"]), "values": [[str(existing_id)]]})
+            if "Status" in col:
+                writeback.append({"range": rowcol_to_a1(r_idx, col["Status"]), "values": [["in_progress"]]})
+            if "Notes" in col:
+                try:
+                    current_notes = (row[col["Notes"]-1] or "").strip()
+                except Exception:
+                    current_notes = ""
+                if not current_notes or "task_id=" not in current_notes:
+                    new_notes = (f"{current_notes}\n" if current_notes else "") + f"task_id={existing_id}"
+                    writeback.append({"range": rowcol_to_a1(r_idx, col["Notes"]), "values": [[new_notes]]})
+            continue
 
         due_dt = parse_human_dt(deadline_val) if deadline_val else None
         est = estimate_minutes(title)
