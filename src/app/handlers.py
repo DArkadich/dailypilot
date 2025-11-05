@@ -1281,6 +1281,63 @@ async def cmd_unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     await update.message.reply_text("Команды: /add /inbox /plan /done /snooze /drop /week /export /stats /health /push_week /pull_week /sync_notion /generate_week /merge_inbox /commit_week /reflect /ai_review /weekend /calendar_advice /can_take")
 
+async def cmd_roll_over(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Переносит все просроченные открытые задачи на указанную дату (или сегодня).
+    Использование: /roll_over [YYYY-MM-DD]
+    Время ставится по правилу: лягушка 09:00, камни 14:00, прочее 20:00.
+    """
+    if not ensure_allowed(update): return
+    try:
+        # Парсим целевую дату (по умолчанию — сегодня в TZ)
+        target_date = None
+        if context.args:
+            try:
+                target_date = datetime.strptime(context.args[0], "%Y-%m-%d").date()
+            except Exception:
+                await update.message.reply_text("❌ Формат: /roll_over YYYY-MM-DD (например: 2025-11-06)")
+                return
+        if target_date is None:
+            target_date = now_local().date()
+
+        # Выбираем открытые задачи с due_at в прошлом
+        from .db import db_connect, snooze_task, iso_utc
+        conn = db_connect()
+        c = conn.cursor()
+        c.execute(
+            """
+              SELECT id, chat_id, title, due_at
+              FROM tasks
+              WHERE status='open' AND due_at IS NOT NULL
+            """
+        )
+        rows = c.fetchall()
+        conn.close()
+
+        fixed = 0
+        for r in rows:
+            try:
+                # due_at в прошлом?
+                due_dt = datetime.fromisoformat(r["due_at"]).astimezone(TZINFO)
+                if due_dt >= now_local():
+                    continue
+                # Новый datetime на целевую дату с подходящим временем
+                lt = (r["title"] or "").lower()
+                if "лягуш" in lt:
+                    nd_local = datetime.combine(target_date, datetime.min.time()).replace(tzinfo=TZINFO).replace(hour=9, minute=0)
+                elif "камень" in lt:
+                    nd_local = datetime.combine(target_date, datetime.min.time()).replace(tzinfo=TZINFO).replace(hour=14, minute=0)
+                else:
+                    nd_local = datetime.combine(target_date, datetime.min.time()).replace(tzinfo=TZINFO).replace(hour=20, minute=0)
+                if snooze_task(r["chat_id"], r["id"], iso_utc(nd_local)):
+                    fixed += 1
+            except Exception:
+                continue
+
+        await update.message.reply_text(f"🔁 Перенесено задач: {fixed}")
+    except Exception as e:
+        logger.error(f"Error in cmd_roll_over: {e}", exc_info=True)
+        await update.message.reply_text("❌ Ошибка при переносе просроченных задач.")
+
 async def cmd_fix_times(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Нормализует время задач с дедлайном 00:00 → лягушка 09:00, камни 14:00, прочее 20:00."""
     if not ensure_allowed(update): return
