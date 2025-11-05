@@ -143,8 +143,10 @@ def _norm_title(s: str) -> str:
         s = s.replace(k, v)
     return s
 
-def import_week_from_sheets_to_bot():
-    """Читает Week_Tasks и добавляет задачи в БД, пишет обратно Bot_ID и статус."""
+def import_week_from_sheets_to_bot(force_new: bool = False):
+    """Читает Week_Tasks и добавляет задачи в БД, пишет обратно Bot_ID и статус.
+    force_new=True — создавать новые задачи даже при совпадении title+Direction в БД.
+    """
     sh = _open_sheet()
     ws = sh.worksheet(SHEET_WEEK_TASKS)
 
@@ -190,8 +192,8 @@ def import_week_from_sheets_to_bot():
         outcome = (row[col.get("Outcome",0)-1] or "").strip()
         deadline_val = (row[col.get("Deadline",0)-1] or "").strip()
         key = (_norm_title(title), direction.lower())
-        # Если уже есть в БД, то просто записываем Bot_ID/Status/Notes обратно и идём дальше
-        if key in cache:
+        # Если уже есть в БД и не форсируем — записываем Bot_ID/Status/Notes обратно и идём дальше
+        if (not force_new) and key in cache:
             existing_id = cache[key]
             if "Bot_ID" in col and not (row[col["Bot_ID"]-1] or "").strip():
                 writeback.append({"range": rowcol_to_a1(r_idx, col["Bot_ID"]), "values": [[str(existing_id)]]})

@@ -554,7 +554,12 @@ async def cmd_pull_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         from .integrations.sheets import import_week_from_sheets_to_bot
         
-        added = import_week_from_sheets_to_bot()
+        # Поддержка принудительного импорта: /pull_week force
+        force = False
+        if context.args and len(context.args) >= 1 and str(context.args[0]).lower() in ("force","new","all"):
+            force = True
+        
+        added = import_week_from_sheets_to_bot(force_new=force)
         await update.message.reply_text(f"✅ Из Sheets подтянуто задач: {added}")
     except Exception as e:
         logger.error(f"Error in cmd_pull_week: {e}", exc_info=True)
