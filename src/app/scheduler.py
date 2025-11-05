@@ -123,51 +123,10 @@ def start_nudges_loop(app):
     def loop():
         from datetime import datetime
         
-        sent_today = {"frog": False, "reflect": False, "plan": False, "commit_week": False}
+        sent_today = {"frog": False, "reflect": False, "commit_week": False}
         while True:
             now = datetime.now(TZINFO)
             try:
-                # Утреннее напоминание о плане (07:00)
-                if now.hour == 7 and now.minute == 0 and not sent_today["plan"]:
-                    try:
-                        # Получаем план на сегодня
-                        from .db import list_today, iso_utc, db_connect
-                        from .handlers import _pick_plan
-                        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-                        end = start + timedelta(days=1)
-                        rows = list_today(ALLOWED_USER_ID, iso_utc(now), iso_utc(start), iso_utc(end))
-                        if not rows:
-                            rows = db_connect().cursor().execute(
-                                "SELECT id,title,context,due_at,priority,est_minutes FROM tasks WHERE chat_id=? AND status='open' ORDER BY priority DESC LIMIT 10",
-                                (ALLOWED_USER_ID,)
-                            ).fetchall()
-                        frog, stones, sand = _pick_plan(rows)
-                        
-                        plan_lines = ["📅 *План на сегодня*"]
-                        if frog:
-                            plan_lines.append("\n🐸 *ЛЯГУШКА*")
-                            for r in frog:
-                                plan_lines.append(f"#{r['id']} {r['title']} — [{r['context']}]")
-                        if stones:
-                            plan_lines.append("\n◼︎ *КАМНИ*")
-                            for r in stones[:3]:
-                                plan_lines.append(f"#{r['id']} {r['title']} — [{r['context']}]")
-                        if sand:
-                            plan_lines.append("\n▫︎ *ПЕСОК*")
-                            for r in sand[:3]:
-                                plan_lines.append(f"#{r['id']} {r['title']} — [{r['context']}]")
-                        
-                        app.bot.send_message(
-                            chat_id=ALLOWED_USER_ID,
-                            text="\n".join(plan_lines),
-                            parse_mode="Markdown"
-                        )
-                    except Exception as e:
-                        logger.error(f"Error sending daily plan: {e}", exc_info=True)
-                        app.bot.send_message(chat_id=ALLOWED_USER_ID, text="📅 План на сегодня (/plan)")
-                    sent_today["plan"] = True
-                    logger.info("Daily plan sent")
-                
                 # Лягушка (08:00)
                 if now.hour == 8 and now.minute == 0 and not sent_today["frog"]:
                     app.bot.send_message(chat_id=ALLOWED_USER_ID, text="🐸 Напомнить: отметь лягушку дня (/plan)")
@@ -196,7 +155,7 @@ def start_nudges_loop(app):
                 
                 # Сброс флагов в полночь
                 if now.hour == 0 and now.minute == 0:
-                    sent_today = {"frog": False, "reflect": False, "plan": False, "commit_week": False}
+                    sent_today = {"frog": False, "reflect": False, "commit_week": False}
                     logger.info("Nudges reset for new day")
             except Exception as e:
                 logger.error(f"Error in nudges loop: {e}", exc_info=True)
@@ -204,3 +163,49 @@ def start_nudges_loop(app):
     
     th = threading.Thread(target=loop, daemon=True)
     th.start()
+
+import asyncio
+
+async def schedule_daily_plan(app):
+    """Ежедневная отправка плана в 08:00 по TZINFO через asyncio."""
+    from .db import list_today, iso_utc, db_connect
+    from .handlers import _pick_plan
+    while True:
+        try:
+            now = datetime.now(TZINFO)
+            target = now.replace(hour=8, minute=0, second=0, microsecond=0)
+            if target <= now:
+                target = target + timedelta(days=1)
+            await asyncio.sleep((target - now).total_seconds())
+
+            # Сбор плана (эквивалент логики /plan)
+            start = target.replace(hour=0, minute=0, second=0, microsecond=0)
+            end = start + timedelta(days=1)
+            rows = list_today(ALLOWED_USER_ID, iso_utc(target), iso_utc(start), iso_utc(end))
+            if not rows:
+                # fallback к открытым топ задачам
+                conn = db_connect()
+                rows = conn.cursor().execute(
+                    "SELECT id,title,context,due_at,priority,est_minutes FROM tasks WHERE chat_id=? AND status='open' ORDER BY priority DESC LIMIT 10",
+                    (ALLOWED_USER_ID,)
+                ).fetchall()
+                conn.close()
+
+            frog, stones, sand = _pick_plan(rows)
+            lines = ["📅 *План на сегодня*"]
+            if frog:
+                lines.append("\n🐸 *ЛЯГУШКА*")
+                lines += [f"#{r['id']} {r['title']} — [{r['context']}]" for r in frog]
+            if stones:
+                lines.append("\n◼︎ *КАМНИ*")
+                lines += [f"#{r['id']} {r['title']} — [{r['context']}]" for r in stones[:3]]
+            if sand:
+                lines.append("\n▫︎ *ПЕСОК*")
+                lines += [f"#{r['id']} {r['title']} — [{r['context']}]" for r in sand[:3]]
+
+            msg = await app.bot.send_message(chat_id=ALLOWED_USER_ID, text="\n".join(lines), parse_mode=ParseMode.MARKDOWN)
+            logger.info(f"[INFO] Daily plan sent at {datetime.now(TZINFO).strftime('%H:%M')}, message_id={msg.message_id}")
+        except Exception:
+            logger.exception("[ERROR] Daily plan failed")
+            # продолжим цикл, не падаем
+            await asyncio.sleep(60)

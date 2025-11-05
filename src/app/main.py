@@ -4,7 +4,7 @@ from telegram.ext import (
 )
 from .config import TELEGRAM_BOT_TOKEN, LOG_LEVEL
 from .db import db_init
-from .scheduler import start_reminder_loop, start_nudges_loop, start_weekend_scheduler
+from .scheduler import start_reminder_loop, start_nudges_loop, start_weekend_scheduler, schedule_daily_plan
 from .handlers import (
     cmd_start, cmd_add, msg_voice, cmd_inbox, cmd_plan, cmd_plan_date,
     cmd_done, cmd_snooze, cmd_week, cmd_export, cmd_unknown, cmd_stats, cmd_health,
@@ -60,6 +60,13 @@ def main():
     start_nudges_loop(app)
     # Авто-weekend отчёт
     start_weekend_scheduler(app)
+
+    # Планировщик ежедневного плана 08:00
+    try:
+        import asyncio
+        asyncio.get_event_loop().create_task(schedule_daily_plan(app))
+    except Exception:
+        logging.exception("Failed to start schedule_daily_plan")
 
     app.run_polling()
 
