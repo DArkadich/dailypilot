@@ -210,6 +210,15 @@ def import_week_from_sheets_to_bot():
 
         writeback.append({"range": rowcol_to_a1(r_idx, col["Bot_ID"]), "values": [[str(new_id)]]})
         writeback.append({"range": rowcol_to_a1(r_idx, col["Status"]), "values": [["in_progress"]]})
+        # Дополнительно пишем task_id в Notes, если пусто или нет task_id=
+        if "Notes" in col:
+            try:
+                current_notes = (row[col["Notes"]-1] or "").strip()
+            except Exception:
+                current_notes = ""
+            if not current_notes or "task_id=" not in current_notes:
+                new_notes = (f"{current_notes}\n" if current_notes else "") + f"task_id={new_id}"
+                writeback.append({"range": rowcol_to_a1(r_idx, col["Notes"]), "values": [[new_notes]]})
 
     if writeback:
         body = {
