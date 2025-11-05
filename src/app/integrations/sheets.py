@@ -238,11 +238,8 @@ def import_week_from_sheets_to_bot():
                 writeback.append({"range": rowcol_to_a1(r_idx, col["Notes"]), "values": [[new_notes]]})
 
     if writeback:
-        body = {
-            "valueInputOption": "USER_ENTERED",
-            "data": [{"range": i["range"], "values": i["values"]} for i in writeback]
-        }
-        ws.spreadsheet.batch_update(body)  # ✅ исправлено: было values_batch_update
+        # Используем worksheet.batch_update с value_input_option
+        ws.batch_update(writeback, value_input_option="USER_ENTERED")
 
     logger.info(f"Added {added} tasks from Week_Tasks")
     return added

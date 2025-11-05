@@ -891,8 +891,8 @@ async def cmd_writeback_ids(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 matched += 1
 
         if wb:
-            body = {"valueInputOption": "USER_ENTERED", "data": [{"range": i["range"], "values": i["values"]} for i in wb]}
-            ws.spreadsheet.batch_update(body)  # ✅ исправлено: было values_batch_update
+            # Прямое пакетное обновление на уровне worksheet
+            ws.batch_update(wb, value_input_option="USER_ENTERED")
 
         await update.message.reply_text(f"✅ Заполнено Bot_ID для {matched} строк.")
     except Exception as e:
