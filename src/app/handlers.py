@@ -255,10 +255,56 @@ def _pick_plan(rows):
 
     if not rows: 
         return [], [], []
-    frog = rows[0:1]
-    stones = rows[1:4]
-    sand = rows[4:]
-    return frog, stones, sand
+    
+    # Классифицируем задачи по времени дедлайна или названию
+    frogs = []
+    stones = []
+    sand = []
+    
+    for r in rows:
+        is_frog = False
+        is_stone = False
+        
+        # Проверяем время дедлайна (приоритет над названием)
+        if r.get("due_at"):
+            try:
+                from datetime import datetime
+                dt = datetime.fromisoformat(r["due_at"]).astimezone(TZINFO)
+                hour = dt.hour
+                # Лягушка: 08:00-12:00
+                if 8 <= hour < 12:
+                    is_frog = True
+                # Камни: 12:00-18:00
+                elif 12 <= hour < 18:
+                    is_stone = True
+                # Песок: 18:00-23:59 или 00:00-08:00
+                # (остальное автоматически песок)
+            except Exception:
+                pass
+        
+        # Если не определили по времени, проверяем название
+        if not is_frog and not is_stone:
+            title_lower = (r.get("title") or "").lower()
+            if "лягуш" in title_lower:
+                is_frog = True
+            elif "камень" in title_lower:
+                is_stone = True
+        
+        # Распределяем по категориям
+        if is_frog:
+            frogs.append(r)
+        elif is_stone:
+            stones.append(r)
+        else:
+            sand.append(r)
+    
+    # Сортируем внутри категорий по приоритету
+    frogs.sort(key=lambda x: (-(x.get("priority") or 0), x.get("est_minutes") or 999))
+    stones.sort(key=lambda x: (-(x.get("priority") or 0), x.get("est_minutes") or 999))
+    sand.sort(key=lambda x: (-(x.get("priority") or 0), x.get("est_minutes") or 999))
+    
+    # Ограничиваем количество
+    return frogs[:1], stones[:2], sand[:10]
 
 async def cmd_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
