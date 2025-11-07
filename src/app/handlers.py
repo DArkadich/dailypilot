@@ -1449,17 +1449,6 @@ async def cmd_rebalance_week(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await update.message.reply_text("Нет задач для ребалансировки.")
             return
 
-        # Группируем по дню
-        from collections import defaultdict
-        by_day = defaultdict(list)
-        for r in rows:
-            try:
-                dt = datetime.fromisoformat(r["due_at"]).astimezone(TZINFO)
-                key = dt.date()
-                by_day[key].append(r)
-            except Exception:
-                continue
-
         def norm_title(s: str) -> str:
             s = (s or "").lower().replace("ё","е").strip()
             import re
@@ -1467,52 +1456,93 @@ async def cmd_rebalance_week(update: Update, context: ContextTypes.DEFAULT_TYPE)
             s = re.sub(r"\s+", " ", s)
             return s
 
+        # Глобальная дедупликация: оставляем один экземпляр на нормализованное название
+        seen_titles = {}
+        unique_rows = []
+        for r in rows:
+            nt = norm_title(r["title"])
+            if nt not in seen_titles:
+                seen_titles[nt] = r
+                unique_rows.append(r)
+            else:
+                # Оставляем задачу с более высоким приоритетом
+                existing = seen_titles[nt]
+                if r["priority"] > existing["priority"]:
+                    seen_titles[nt] = r
+                    unique_rows = [x for x in unique_rows if x["id"] != existing["id"]]
+                    unique_rows.append(r)
+
+        # Разделяем на категории
+        frogs = []
+        stones = []
+        sand = []
+        for r in unique_rows:
+            t = (r["title"] or "").lower()
+            if "лягуш" in t:
+                frogs.append(r)
+            elif "камень" in t:
+                stones.append(r)
+            else:
+                sand.append(r)
+
+        # Сортируем по приоритету внутри категорий
+        frogs.sort(key=lambda x: (-x["priority"], x["est_minutes"] or 999))
+        stones.sort(key=lambda x: (-x["priority"], x["est_minutes"] or 999))
+        sand.sort(key=lambda x: (-x["priority"], x["est_minutes"] or 999))
+
+        # Распределяем по дням недели
+        days = [start + timedelta(days=i) for i in range(7)]
+        day_slots = {d.date(): {"frog": [], "stones": [], "sand": []} for d in days}
+
+        # Распределяем лягушек (по одной на день)
+        for i, frog in enumerate(frogs):
+            day_idx = i % len(days)
+            day_slots[days[day_idx].date()]["frog"].append(frog)
+
+        # Распределяем камни (по 2 на день)
+        stone_idx = 0
+        for day in days:
+            for _ in range(max_stones):
+                if stone_idx < len(stones):
+                    day_slots[day.date()]["stones"].append(stones[stone_idx])
+                    stone_idx += 1
+
+        # Распределяем песок (по max_sand на день)
+        sand_idx = 0
+        for day in days:
+            for _ in range(max_sand):
+                if sand_idx < len(sand):
+                    day_slots[day.date()]["sand"].append(sand[sand_idx])
+                    sand_idx += 1
+
+        # Обновляем даты задач
         moved = 0
-        # По каждому дню оставляем лимит; лишнее переносим на следующий день
-        for d in sorted(by_day.keys()):
-            day_tasks = by_day[d]
-            # Дедуп по названию в рамках дня
-            seen = set()
-            uniq = []
-            for r in day_tasks:
-                nt = norm_title(r["title"])
-                if nt in seen:
-                    uniq.append(("overflow", r))
-                else:
-                    seen.add(nt)
-                    uniq.append(("keep", r))
-
-            frogs = []
-            stones = []
-            sand = []
-            for _, r in uniq:
-                t = (r["title"] or "").lower()
-                if "лягуш" in t:
-                    frogs.append(r)
-                elif "камень" in t:
-                    stones.append(r)
-                else:
-                    sand.append(r)
-
-            # Оставляем по лимитам
-            keep = frogs[:max_frog] + stones[:max_stones] + sand[:max_sand]
-            keep_ids = {r["id"] for r in keep}
-            overflow = [r for _, r in uniq if r["id"] not in keep_ids]
-
-            # Перенос overflow на следующий день
-            next_day = d + timedelta(days=1)
-            for r in overflow:
-                t = (r["title"] or "").lower()
-                if "лягуш" in t:
-                    nd_local = datetime.combine(next_day, datetime.min.time()).replace(tzinfo=TZINFO).replace(hour=9, minute=30)
-                elif "камень" in t:
-                    nd_local = datetime.combine(next_day, datetime.min.time()).replace(tzinfo=TZINFO).replace(hour=14, minute=30)
-                else:
-                    nd_local = datetime.combine(next_day, datetime.min.time()).replace(tzinfo=TZINFO).replace(hour=20, minute=30)
+        for day_date, slots in day_slots.items():
+            # Лягушки: 09:30
+            for r in slots["frog"]:
+                nd_local = datetime.combine(day_date, datetime.min.time()).replace(tzinfo=TZINFO).replace(hour=9, minute=30)
+                if snooze_task(r["chat_id"], r["id"], iso_utc(nd_local)):
+                    moved += 1
+            
+            # Камни: 14:30
+            for r in slots["stones"]:
+                nd_local = datetime.combine(day_date, datetime.min.time()).replace(tzinfo=TZINFO).replace(hour=14, minute=30)
+                if snooze_task(r["chat_id"], r["id"], iso_utc(nd_local)):
+                    moved += 1
+            
+            # Песок: 20:30
+            for r in slots["sand"]:
+                nd_local = datetime.combine(day_date, datetime.min.time()).replace(tzinfo=TZINFO).replace(hour=20, minute=30)
                 if snooze_task(r["chat_id"], r["id"], iso_utc(nd_local)):
                     moved += 1
 
-        await update.message.reply_text(f"♻️ Ребалансировка выполнена. Перенесено задач: {moved}")
+        deduped = len(rows) - len(unique_rows)
+        await update.message.reply_text(
+            f"♻️ Ребалансировка выполнена:\n"
+            f"• Убрано дублей: {deduped}\n"
+            f"• Обновлено задач: {moved}\n"
+            f"• Лягушек: {len(frogs)}, камней: {len(stones)}, песка: {len(sand)}"
+        )
     except Exception as e:
         logger.error(f"Error in cmd_rebalance_week: {e}", exc_info=True)
         await update.message.reply_text("❌ Ошибка ребалансировки.")
