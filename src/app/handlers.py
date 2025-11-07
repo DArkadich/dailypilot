@@ -309,7 +309,7 @@ def _pick_plan(rows):
     sand.sort(key=lambda x: (-(x["priority"] or 0), (x["est_minutes"] or 0) if "est_minutes" in x.keys() else 0))
     
     # Ограничиваем количество
-    return frogs[:1], stones[:2], sand[:10]
+    return frogs[:1], stones[:2], sand[:5]
 
 def _escape_markdown(text: str) -> str:
     """Экранирует специальные символы Markdown в тексте."""
@@ -352,7 +352,7 @@ async def cmd_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
             out += [fmt(x) for x in stones]
         if sand:
             out.append("\n▫︎ *ПЕСОК*")
-            out += [fmt(x) for x in sand[:10]]
+            out += [fmt(x) for x in sand[:5]]
         await update.message.reply_text("\n".join(out), parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
         logger.error(f"Error in cmd_plan: {e}", exc_info=True)
@@ -410,7 +410,7 @@ async def cmd_plan_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
             out += [fmt(x) for x in stones]
         if sand:
             out.append("\n▫︎ *ПЕСОК*")
-            out += [fmt(x) for x in sand[:10]]
+            out += [fmt(x) for x in sand[:5]]
         
         if not frog and not stones and not sand:
             out.append("\n_Нет задач на эту дату._")
