@@ -266,10 +266,11 @@ def _pick_plan(rows):
         is_stone = False
         
         # Проверяем время дедлайна (приоритет над названием)
-        if r.get("due_at"):
+        due_at = r["due_at"] if "due_at" in r.keys() and r["due_at"] else None
+        if due_at:
             try:
                 from datetime import datetime
-                dt = datetime.fromisoformat(r["due_at"]).astimezone(TZINFO)
+                dt = datetime.fromisoformat(due_at).astimezone(TZINFO)
                 hour = dt.hour
                 # Лягушка: 08:00-12:00
                 if 8 <= hour < 12:
@@ -284,7 +285,8 @@ def _pick_plan(rows):
         
         # Если не определили по времени, проверяем название
         if not is_frog and not is_stone:
-            title_lower = (r.get("title") or "").lower()
+            title = r["title"] if "title" in r.keys() else ""
+            title_lower = (title or "").lower()
             if "лягуш" in title_lower:
                 is_frog = True
             elif "камень" in title_lower:
@@ -299,9 +301,9 @@ def _pick_plan(rows):
             sand.append(r)
     
     # Сортируем внутри категорий по приоритету
-    frogs.sort(key=lambda x: (-(x.get("priority") or 0), x.get("est_minutes") or 999))
-    stones.sort(key=lambda x: (-(x.get("priority") or 0), x.get("est_minutes") or 999))
-    sand.sort(key=lambda x: (-(x.get("priority") or 0), x.get("est_minutes") or 999))
+    frogs.sort(key=lambda x: (-(x["priority"] or 0), (x["est_minutes"] or 0) if "est_minutes" in x.keys() else 0))
+    stones.sort(key=lambda x: (-(x["priority"] or 0), (x["est_minutes"] or 0) if "est_minutes" in x.keys() else 0))
+    sand.sort(key=lambda x: (-(x["priority"] or 0), (x["est_minutes"] or 0) if "est_minutes" in x.keys() else 0))
     
     # Ограничиваем количество
     return frogs[:1], stones[:2], sand[:10]
