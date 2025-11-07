@@ -169,8 +169,11 @@ async def cmd_inbox(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         lines = ["📥 *Инбокс*:"]
         for r in rows:
-            tid, title, ctx, due, pr = r["id"], r["title"], r["context"], r["due_at"], r["priority"]
-            lines.append(f"#{tid} • {title} — [{ctx}] • ⚡{int(pr)}")
+            tid = r["id"]
+            title = r["title"] if "title" in r.keys() else ""
+            ctx = r["context"] if "context" in r.keys() else ""
+            pr = r["priority"] if "priority" in r.keys() else 0
+            lines.append(f"#{tid} • {_escape_markdown(title)} — [{_escape_markdown(ctx)}] • ⚡{int(pr)}")
         # Сообщение может быть слишком длинным — режем на части
         text = "\n".join(lines)
         max_len = 3800  # чуть меньше лимита Telegram
