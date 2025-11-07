@@ -744,7 +744,7 @@ async def cmd_reflect(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if stones:
         preview.append("◼︎ Камни:\n" + "\n".join(fmt(x) for x in stones))
     if sand:
-        preview.append("▫︎ Песок:\n" + "\n".join(fmt(x) for x in sand[:5]))
+        preview.append("▫︎ Песок:\n" + "\n".join(fmt(x) for x in sand[:4]))
 
     questions = (
         "🪞 *Рефлексия дня — 5 вопросов:*\n\n"
