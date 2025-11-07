@@ -496,7 +496,11 @@ async def cmd_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if day != current:
                 current = day
                 lines.append(f"\n*{day}*")
-            lines.append(f"#{r['id']} {r['title']} — [{r['context']}] • ⏱~{r['est_minutes']}м • ⚡{int(r['priority'])} • {dt.strftime('%H:%M')}")
+            title = r["title"] if "title" in r.keys() else ""
+            context = r["context"] if "context" in r.keys() else ""
+            est_minutes = r["est_minutes"] if "est_minutes" in r.keys() else 0
+            priority = r["priority"] if "priority" in r.keys() else 0
+            lines.append(f"#{r['id']} {_escape_markdown(title)} — [{_escape_markdown(context)}] • ⏱~{est_minutes}м • ⚡{int(priority)} • {dt.strftime('%H:%M')}")
         # Пагинация: Telegram ограничивает длину сообщения
         text = "\n".join(lines)
         max_len = 3800
