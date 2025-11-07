@@ -1311,7 +1311,7 @@ async def callback_can_take(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
-    await update.message.reply_text("Команды: /add /inbox /plan /done /snooze /drop /week /export /stats /health /push_week /pull_week /sync_notion /generate_week /merge_inbox /commit_week /reflect /ai_review /weekend /calendar_advice /can_take")
+    await update.message.reply_text("Команды: /add /inbox /plan /done /snooze /drop /week /export /stats /health /push_week /pull_week /sync_notion /generate_week /merge_inbox /commit_week /reflect /ai_review /weekend /calendar_advice /can_take /fix_times /roll_over /rebalance_week /ai_rebalance")
 
 async def cmd_roll_over(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Переносит все просроченные открытые задачи на указанную дату (или сегодня).
