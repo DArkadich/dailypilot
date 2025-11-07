@@ -123,7 +123,7 @@ def start_nudges_loop(app):
     def loop():
         from datetime import datetime
         
-        sent_today = {"frog": False, "reflect": False, "commit_week": False}
+        sent_today = {"frog": False, "reflect": False, "commit_week": False, "auto_rollover": False}
         while True:
             now = datetime.now(TZINFO)
             try:
@@ -138,6 +138,54 @@ def start_nudges_loop(app):
                     app.bot.send_message(chat_id=ALLOWED_USER_ID, text="🪞 Рефлексия 5 минут: используй /reflect для ежедневной рефлексии.")
                     sent_today["reflect"] = True
                     logger.info("Reflection nudge sent")
+                
+                # Автоматический перенос несделанных задач (22:00)
+                if now.hour == 22 and now.minute == 0 and not sent_today.get("auto_rollover", False):
+                    try:
+                        from .db import db_connect, snooze_task, iso_utc
+                        from datetime import timedelta
+                        conn = db_connect()
+                        c = conn.cursor()
+                        # Задачи, которые должны были быть сделаны сегодня, но не сделаны
+                        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                        today_end = today_start + timedelta(days=1)
+                        c.execute("""
+                            SELECT id, chat_id, title, due_at
+                            FROM tasks
+                            WHERE chat_id=? AND status='open' AND due_at IS NOT NULL
+                                AND due_at >= ? AND due_at < ?
+                        """, (ALLOWED_USER_ID, iso_utc(today_start), iso_utc(today_end)))
+                        undone_today = c.fetchall()
+                        conn.close()
+                        
+                        moved_count = 0
+                        # Переносим на завтра с умным распределением времени
+                        tomorrow = (now + timedelta(days=1)).date()
+                        for task in undone_today:
+                            try:
+                                from datetime import datetime as dt
+                                t = (task["title"] or "").lower()
+                                if "лягуш" in t:
+                                    new_dt = dt.combine(tomorrow, dt.min.time()).replace(tzinfo=TZINFO).replace(hour=9, minute=30)
+                                elif "камень" in t:
+                                    new_dt = dt.combine(tomorrow, dt.min.time()).replace(tzinfo=TZINFO).replace(hour=14, minute=30)
+                                else:
+                                    new_dt = dt.combine(tomorrow, dt.min.time()).replace(tzinfo=TZINFO).replace(hour=20, minute=30)
+                                
+                                if snooze_task(task["chat_id"], task["id"], iso_utc(new_dt)):
+                                    moved_count += 1
+                            except Exception:
+                                continue
+                        
+                        if moved_count > 0:
+                            app.bot.send_message(
+                                chat_id=ALLOWED_USER_ID,
+                                text=f"🔄 Автоматически перенесено {moved_count} несделанных задач на завтра."
+                            )
+                            logger.info(f"Auto-rolled over {moved_count} tasks")
+                    except Exception as e:
+                        logger.error(f"Error in auto rollover: {e}", exc_info=True)
+                    sent_today["auto_rollover"] = True
                 
                 # Авто-обновление commit_week (03:00)
                 if now.hour == 3 and now.minute == 0 and not sent_today["commit_week"]:
@@ -155,7 +203,7 @@ def start_nudges_loop(app):
                 
                 # Сброс флагов в полночь
                 if now.hour == 0 and now.minute == 0:
-                    sent_today = {"frog": False, "reflect": False, "commit_week": False}
+                    sent_today = {"frog": False, "reflect": False, "commit_week": False, "auto_rollover": False}
                     logger.info("Nudges reset for new day")
             except Exception as e:
                 logger.error(f"Error in nudges loop: {e}", exc_info=True)

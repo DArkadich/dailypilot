@@ -1546,3 +1546,110 @@ async def cmd_rebalance_week(update: Update, context: ContextTypes.DEFAULT_TYPE)
     except Exception as e:
         logger.error(f"Error in cmd_rebalance_week: {e}", exc_info=True)
         await update.message.reply_text("❌ Ошибка ребалансировки.")
+
+async def cmd_ai_rebalance(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """AI-ребалансировка задач с учётом целей, проектов и приоритетов.
+    Использование: /ai_rebalance [max_sand]
+    """
+    if not ensure_allowed(update): return
+    if not OPENAI_API_KEY:
+        await update.message.reply_text("❌ OPENAI_API_KEY не задан.")
+        return
+    
+    await update.message.reply_text("🤖 Анализирую задачи с помощью AI...")
+    
+    try:
+        max_sand = 3
+        if context.args:
+            try:
+                max_sand = int(context.args[0])
+            except Exception:
+                pass
+        
+        from .integrations.ai_planner import analyze_and_rebalance_with_ai
+        from .db import snooze_task, iso_utc
+        from datetime import datetime, timedelta
+        
+        # Получаем рекомендации от AI
+        ai_result = analyze_and_rebalance_with_ai(update.effective_chat.id, max_sand)
+        
+        moved = 0
+        postponed = 0
+        
+        # Применяем переносы задач
+        if "can_postpone" in ai_result:
+            for item in ai_result["can_postpone"]:
+                task_id = item.get("id")
+                new_date_str = item.get("new_date")
+                if task_id and new_date_str:
+                    try:
+                        new_date = datetime.strptime(new_date_str, "%Y-%m-%d").date()
+                        # Ставим время в зависимости от типа задачи
+                        from .db import db_connect
+                        conn = db_connect()
+                        c = conn.cursor()
+                        c.execute("SELECT title, due_at FROM tasks WHERE id=? AND chat_id=?", (task_id, update.effective_chat.id))
+                        task_row = c.fetchone()
+                        conn.close()
+                        
+                        if task_row:
+                            t = (task_row["title"] or "").lower()
+                            if "лягуш" in t:
+                                nd_local = datetime.combine(new_date, datetime.min.time()).replace(tzinfo=TZINFO).replace(hour=9, minute=30)
+                            elif "камень" in t:
+                                nd_local = datetime.combine(new_date, datetime.min.time()).replace(tzinfo=TZINFO).replace(hour=14, minute=30)
+                            else:
+                                nd_local = datetime.combine(new_date, datetime.min.time()).replace(tzinfo=TZINFO).replace(hour=20, minute=30)
+                            
+                            if snooze_task(update.effective_chat.id, task_id, iso_utc(nd_local)):
+                                postponed += 1
+                    except Exception as e:
+                        logger.error(f"Error postponing task {task_id}: {e}", exc_info=True)
+        
+        # Применяем распределение по дням
+        if "distribution" in ai_result:
+            for day_plan in ai_result["distribution"]:
+                date_str = day_plan.get("date")
+                if not date_str:
+                    continue
+                try:
+                    target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+                    
+                    # Обновляем лягушку
+                    if day_plan.get("frog"):
+                        task_id = day_plan["frog"]
+                        nd_local = datetime.combine(target_date, datetime.min.time()).replace(tzinfo=TZINFO).replace(hour=9, minute=30)
+                        if snooze_task(update.effective_chat.id, task_id, iso_utc(nd_local)):
+                            moved += 1
+                    
+                    # Обновляем камни
+                    for stone_id in day_plan.get("stones", []):
+                        nd_local = datetime.combine(target_date, datetime.min.time()).replace(tzinfo=TZINFO).replace(hour=14, minute=30)
+                        if snooze_task(update.effective_chat.id, stone_id, iso_utc(nd_local)):
+                            moved += 1
+                    
+                    # Обновляем песок
+                    for sand_id in day_plan.get("sand", []):
+                        nd_local = datetime.combine(target_date, datetime.min.time()).replace(tzinfo=TZINFO).replace(hour=20, minute=30)
+                        if snooze_task(update.effective_chat.id, sand_id, iso_utc(nd_local)):
+                            moved += 1
+                except Exception as e:
+                    logger.error(f"Error applying distribution for {date_str}: {e}", exc_info=True)
+        
+        # Формируем ответ
+        lines = ["🤖 *AI-ребалансировка выполнена*"]
+        if moved > 0:
+            lines.append(f"✅ Обновлено задач: {moved}")
+        if postponed > 0:
+            lines.append(f"⏳ Отложено задач: {postponed}")
+        
+        if "recommendations" in ai_result and ai_result["recommendations"]:
+            lines.append("\n💡 *Рекомендации:*")
+            for rec in ai_result["recommendations"][:5]:
+                lines.append(f"• {rec}")
+        
+        await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
+        
+    except Exception as e:
+        logger.error(f"Error in cmd_ai_rebalance: {e}", exc_info=True)
+        await update.message.reply_text(f"❌ Ошибка AI-ребалансировки: {e}")
