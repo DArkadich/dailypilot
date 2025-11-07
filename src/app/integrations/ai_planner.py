@@ -74,7 +74,7 @@ def analyze_and_rebalance_with_ai(chat_id: int, max_sand: int = 3) -> Dict[str, 
     projects_text = "\n".join([f"- {p.get('Title', '')} [{p.get('Context', '')}] (дедлайн: {p.get('Deadline', 'N/A')})" for p in projects[:15]])
     
     open_tasks_text = "\n".join([
-        f"#{t['id']}: {t['title']} [{t['context']}] — приоритет {int(t['priority'])}, ~{t.get('est_minutes', 0)}м, дедлайн: {t.get('due_at', 'нет')[:10] if t.get('due_at') else 'нет'}"
+        f"#{t['id']}: {t['title']} [{t['context']}] — приоритет {int(t['priority'])}, ~{t['est_minutes'] or 0}м, дедлайн: {(t['due_at'][:10] if t['due_at'] else 'нет')}"
         for t in open_tasks[:30]
     ])
     
