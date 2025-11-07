@@ -391,7 +391,11 @@ async def cmd_plan_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 from datetime import datetime
                 dt = datetime.fromisoformat(r["due_at"]).astimezone(TZINFO)
                 due_str = f" • 🗓 {dt.strftime('%H:%M')}"
-            return f"#{r['id']} {r['title']} — [{r['context']}] • ⚡{int(r['priority'])} • ⏱~{r['est_minutes']}м{due_str}"
+            title = r["title"] if "title" in r.keys() else ""
+            context = r["context"] if "context" in r.keys() else ""
+            est_minutes = r["est_minutes"] if "est_minutes" in r.keys() else 0
+            priority = r["priority"] if "priority" in r.keys() else 0
+            return f"#{r['id']} {_escape_markdown(title)} — [{_escape_markdown(context)}] • ⚡{int(priority)} • ⏱~{est_minutes}м{due_str}"
 
         date_display = target_date.strftime("%d.%m.%Y")
         out = [f"📅 *План на {date_display}*"]
