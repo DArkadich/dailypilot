@@ -159,18 +159,54 @@ def start_nudges_loop(app):
                         conn.close()
                         
                         moved_count = 0
+                        large_moved = 0
                         # Переносим на завтра с умным распределением времени
                         tomorrow = (now + timedelta(days=1)).date()
+                        tomorrow_weekday = tomorrow.weekday()
+                        
+                        # Находим следующее воскресенье для крупных задач
+                        days_until_sunday = (6 - tomorrow_weekday) % 7
+                        if days_until_sunday == 0 and tomorrow_weekday != 6:
+                            days_until_sunday = 7
+                        sunday_date = tomorrow + timedelta(days=days_until_sunday)
+                        
                         for task in undone_today:
                             try:
                                 from datetime import datetime as dt
+                                from .db import db_connect
+                                # Получаем время выполнения задачи
+                                conn = db_connect()
+                                c = conn.cursor()
+                                c.execute("SELECT est_minutes FROM tasks WHERE id=? AND chat_id=?", (task["id"], task["chat_id"]))
+                                task_row = c.fetchone()
+                                conn.close()
+                                
+                                est_minutes = (task_row["est_minutes"] if task_row else 30) or 30
                                 t = (task["title"] or "").lower()
-                                if "лягуш" in t:
-                                    new_dt = dt.combine(tomorrow, dt.min.time()).replace(tzinfo=TZINFO).replace(hour=9, minute=30)
-                                elif "камень" in t:
-                                    new_dt = dt.combine(tomorrow, dt.min.time()).replace(tzinfo=TZINFO).replace(hour=14, minute=30)
-                                else:
-                                    new_dt = dt.combine(tomorrow, dt.min.time()).replace(tzinfo=TZINFO).replace(hour=20, minute=30)
+                                
+                                # Крупные задачи (90+ минут) переносим на воскресенье
+                                if est_minutes >= 90:
+                                    new_dt = dt.combine(sunday_date, dt.min.time()).replace(tzinfo=TZINFO).replace(hour=10, minute=0)
+                                    if snooze_task(task["chat_id"], task["id"], iso_utc(new_dt)):
+                                        moved_count += 1
+                                        large_moved += 1
+                                    continue
+                                
+                                # Обычные задачи переносим на завтра с учётом дня недели
+                                if tomorrow_weekday == 6:  # Воскресенье - весь день
+                                    if "лягуш" in t:
+                                        new_dt = dt.combine(tomorrow, dt.min.time()).replace(tzinfo=TZINFO).replace(hour=9, minute=0)
+                                    elif "камень" in t:
+                                        new_dt = dt.combine(tomorrow, dt.min.time()).replace(tzinfo=TZINFO).replace(hour=14, minute=0)
+                                    else:
+                                        new_dt = dt.combine(tomorrow, dt.min.time()).replace(tzinfo=TZINFO).replace(hour=10, minute=0)
+                                else:  # Пн-Сб - только вечер
+                                    if "лягуш" in t:
+                                        new_dt = dt.combine(tomorrow, dt.min.time()).replace(tzinfo=TZINFO).replace(hour=19, minute=30)
+                                    elif "камень" in t:
+                                        new_dt = dt.combine(tomorrow, dt.min.time()).replace(tzinfo=TZINFO).replace(hour=20, minute=0)
+                                    else:
+                                        new_dt = dt.combine(tomorrow, dt.min.time()).replace(tzinfo=TZINFO).replace(hour=20, minute=30)
                                 
                                 if snooze_task(task["chat_id"], task["id"], iso_utc(new_dt)):
                                     moved_count += 1
@@ -178,11 +214,13 @@ def start_nudges_loop(app):
                                 continue
                         
                         if moved_count > 0:
-                            app.bot.send_message(
-                                chat_id=ALLOWED_USER_ID,
-                                text=f"🔄 Автоматически перенесено {moved_count} несделанных задач на завтра."
-                            )
-                            logger.info(f"Auto-rolled over {moved_count} tasks")
+                            msg = f"🔄 Автоматически перенесено {moved_count} несделанных задач"
+                            if large_moved > 0:
+                                msg += f"\n• {large_moved} крупных задач (90+ мин) → воскресенье"
+                            if moved_count - large_moved > 0:
+                                msg += f"\n• {moved_count - large_moved} обычных задач → завтра"
+                            app.bot.send_message(chat_id=ALLOWED_USER_ID, text=msg)
+                            logger.info(f"Auto-rolled over {moved_count} tasks ({large_moved} large to Sunday)")
                     except Exception as e:
                         logger.error(f"Error in auto rollover: {e}", exc_info=True)
                     sent_today["auto_rollover"] = True

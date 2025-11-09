@@ -2,7 +2,7 @@ import json
 import logging
 import re
 import hashlib
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date
 from difflib import SequenceMatcher
 import dateparser
 from dateutil import tz as dateutil_tz
@@ -109,25 +109,25 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     try:
-        text = " ".join(context.args).strip()
-        if not text:
-            await update.message.reply_text("Формат: /add <задача> (можно добавить срок: «сегодня 19:00», «завтра», «через 2 часа»)")
-            return
-        parsed = parse_task(text)
-        due_dt = parse_human_dt(parsed.get("due")) if parsed.get("due") else None
-        est = estimate_minutes(parsed["title"])
-        pr = compute_priority(parsed["title"], due_dt, est)
-        tid = add_task(
-            update.effective_chat.id,
-            parsed["title"], parsed["description"],
-            parsed["context"],
-            iso_utc(due_dt), iso_utc(now_local()), pr, est, "text"
-        )
-        msg = f"✅ Добавлено #{tid}: *{parsed['title']}*\n"
-        if due_dt:
-            msg += f"🗓 {due_dt.astimezone(TZINFO).strftime('%d.%m %H:%M')}\n"
-        msg += f"📎 [{parsed['context']}] • ⏱~{est} мин • ⚡{int(pr)}"
-        await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
+    text = " ".join(context.args).strip()
+    if not text:
+        await update.message.reply_text("Формат: /add <задача> (можно добавить срок: «сегодня 19:00», «завтра», «через 2 часа»)")
+        return
+    parsed = parse_task(text)
+    due_dt = parse_human_dt(parsed.get("due")) if parsed.get("due") else None
+    est = estimate_minutes(parsed["title"])
+    pr = compute_priority(parsed["title"], due_dt, est)
+    tid = add_task(
+        update.effective_chat.id,
+        parsed["title"], parsed["description"],
+        parsed["context"],
+        iso_utc(due_dt), iso_utc(now_local()), pr, est, "text"
+    )
+    msg = f"✅ Добавлено #{tid}: *{parsed['title']}*\n"
+    if due_dt:
+        msg += f"🗓 {due_dt.astimezone(TZINFO).strftime('%d.%m %H:%M')}\n"
+    msg += f"📎 [{parsed['context']}] • ⏱~{est} мин • ⚡{int(pr)}"
+    await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
         logger.error(f"Error in cmd_add: {e}", exc_info=True)
         await update.message.reply_text("❌ Ошибка при добавлении задачи. Попробуйте ещё раз.")
@@ -136,26 +136,26 @@ async def msg_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     if not update.message.voice: return
     try:
-        await update.message.chat.send_action(ChatAction.TYPING)
-        file = await context.bot.get_file(update.message.voice.file_id)
-        ogg_bytes = await file.download_as_bytearray()
-        text = transcribe_ogg_to_text(bytes(ogg_bytes))
-        parsed = parse_task(text)
-        due_dt = parse_human_dt(parsed.get("due")) if parsed.get("due") else None
-        est = estimate_minutes(parsed["title"])
-        pr = compute_priority(parsed["title"], due_dt, est)
-        tid = add_task(
-            update.effective_chat.id,
-            parsed["title"], parsed["description"],
-            parsed["context"],
-            iso_utc(due_dt), iso_utc(now_local()), pr, est, "voice"
-        )
-        msg = (f"🎙 Распознано: _{text}_\n\n"
-               f"✅ Добавлено #{tid}: *{parsed['title']}*\n")
-        if due_dt:
-            msg += f"🗓 {due_dt.astimezone(TZINFO).strftime('%d.%m %H:%M')}\n"
-        msg += f"📎 [{parsed['context']}] • ⏱~{est} мин • ⚡{int(pr)}"
-        await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
+    await update.message.chat.send_action(ChatAction.TYPING)
+    file = await context.bot.get_file(update.message.voice.file_id)
+    ogg_bytes = await file.download_as_bytearray()
+    text = transcribe_ogg_to_text(bytes(ogg_bytes))
+    parsed = parse_task(text)
+    due_dt = parse_human_dt(parsed.get("due")) if parsed.get("due") else None
+    est = estimate_minutes(parsed["title"])
+    pr = compute_priority(parsed["title"], due_dt, est)
+    tid = add_task(
+        update.effective_chat.id,
+        parsed["title"], parsed["description"],
+        parsed["context"],
+        iso_utc(due_dt), iso_utc(now_local()), pr, est, "voice"
+    )
+    msg = (f"🎙 Распознано: _{text}_\n\n"
+           f"✅ Добавлено #{tid}: *{parsed['title']}*\n")
+    if due_dt:
+        msg += f"🗓 {due_dt.astimezone(TZINFO).strftime('%d.%m %H:%M')}\n"
+    msg += f"📎 [{parsed['context']}] • ⏱~{est} мин • ⚡{int(pr)}"
+    await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
         logger.error(f"Error in msg_voice: {e}", exc_info=True)
         await update.message.reply_text("❌ Ошибка при обработке голосового сообщения. Попробуйте ещё раз.")
@@ -163,12 +163,12 @@ async def msg_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_inbox(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     try:
-        rows = list_inbox(update.effective_chat.id)
-        if not rows:
-            await update.message.reply_text("📥 Инбокс пуст.")
-            return
-        lines = ["📥 *Инбокс*:"]
-        for r in rows:
+    rows = list_inbox(update.effective_chat.id)
+    if not rows:
+        await update.message.reply_text("📥 Инбокс пуст.")
+        return
+    lines = ["📥 *Инбокс*:"]
+    for r in rows:
             tid = r["id"]
             title = r["title"] if "title" in r.keys() else ""
             ctx = r["context"] if "context" in r.keys() else ""
@@ -252,19 +252,98 @@ def _dedupe_rows(rows, similarity=0.92):
             kept.append(r)
     return kept, reps
 
-def _pick_plan(rows):
+def get_available_time_minutes(day_date: date) -> int:
+    """
+    Возвращает доступное время в минутах для конкретной даты.
+    График пользователя:
+    - Пн-Сб: 8:00-19:00 на стройке (занят), свободен вечером 19:00-22:30 = 210 минут (3.5 часа)
+    - Воскресенье: свободен весь день = 480 минут (8 часов)
+    """
+    weekday = day_date.weekday()  # 0=Monday, 6=Sunday
+    if weekday == 6:  # Воскресенье
+        return 480  # 8 часов
+    else:  # Пн-Сб
+        return 210  # 3.5 часа вечером (19:00-22:30)
+
+def get_time_slot_for_task(task_minutes: int, day_date: date, task_type: str = "sand") -> tuple:
+    """
+    Возвращает оптимальное время для задачи на основе:
+    - Времени выполнения задачи
+    - Доступного времени в этот день
+    - Типа задачи (frog, stone, sand)
+    
+    Возвращает: (hour, minute) для назначения времени
+    """
+    weekday = day_date.weekday()
+    available_minutes = get_available_time_minutes(day_date)
+    
+    # Крупные задачи (90+ минут) можно делать только в воскресенье
+    if task_minutes >= 90 and weekday != 6:
+        # Переносим на воскресенье утро (09:00)
+        return None  # Сигнал, что нужно перенести на воскресенье
+    
+    if weekday == 6:  # Воскресенье - весь день доступен
+        if task_type == "frog":
+            return (9, 0)  # Утро
+        elif task_type == "stone":
+            return (14, 0)  # День
+        else:
+            return (10, 0)  # Утро-день для крупных задач
+    else:  # Пн-Сб - только вечер
+        if task_type == "frog":
+            return (19, 30)  # Начало вечера
+        elif task_type == "stone":
+            return (20, 0)  # Середина вечера
+        else:
+            return (20, 30)  # Конец вечера
+
+def check_time_overload(tasks: list, day_date: date) -> tuple:
+    """
+    Проверяет, не перегружен ли день задачами.
+    Возвращает: (is_overloaded, total_minutes, available_minutes, overload_percent)
+    """
+    available_minutes = get_available_time_minutes(day_date)
+    total_minutes = sum(r.get("est_minutes", 30) or 30 for r in tasks)
+    is_overloaded = total_minutes > available_minutes
+    overload_percent = ((total_minutes / available_minutes) * 100) if available_minutes > 0 else 0
+    return (is_overloaded, total_minutes, available_minutes, overload_percent)
+
+def _pick_plan(rows, target_date=None):
+    """
+    Умный выбор задач на день с учётом:
+    - Доступного времени пользователя
+    - Времени выполнения задач
+    - Приоритетов
+    
+    Args:
+        rows: список задач
+        target_date: дата для планирования (по умолчанию - сегодня)
+    """
     # ДОБАВЛЕНО: антидубли
     rows, _reps = _dedupe_rows(rows)
 
     if not rows: 
         return [], [], []
     
+    # Получаем целевую дату для расчёта доступного времени
+    if target_date is None:
+        target_date = now_local().date()
+    available_minutes = get_available_time_minutes(target_date)
+    
     # Классифицируем задачи по времени дедлайна или названию
     frogs = []
     stones = []
     sand = []
+    large_tasks = []  # Задачи 90+ минут
     
     for r in rows:
+        est_min = r.get("est_minutes", 30) or 30
+        
+        # Крупные задачи (90+ минут) отдельно для воскресенья
+        if est_min >= 90:
+            large_tasks.append(r)
+            continue
+        
         is_frog = False
         is_stone = False
         
@@ -304,12 +383,48 @@ def _pick_plan(rows):
             sand.append(r)
     
     # Сортируем внутри категорий по приоритету
-    frogs.sort(key=lambda x: (-(x["priority"] or 0), (x["est_minutes"] or 0) if "est_minutes" in x.keys() else 0))
-    stones.sort(key=lambda x: (-(x["priority"] or 0), (x["est_minutes"] or 0) if "est_minutes" in x.keys() else 0))
-    sand.sort(key=lambda x: (-(x["priority"] or 0), (x["est_minutes"] or 0) if "est_minutes" in x.keys() else 0))
+    frogs.sort(key=lambda x: (-(x["priority"] or 0), (x.get("est_minutes") or 0)))
+    stones.sort(key=lambda x: (-(x["priority"] or 0), (x.get("est_minutes") or 0)))
+    sand.sort(key=lambda x: (-(x["priority"] or 0), (x.get("est_minutes") or 0)))
     
-    # Ограничиваем количество
-    return frogs[:1], stones[:2], sand[:5]
+    # Умный отбор с учётом доступного времени
+    selected_frogs = []
+    selected_stones = []
+    selected_sand = []
+    used_minutes = 0
+    
+    # Выбираем лягушку (максимум 1, до 60 минут)
+    for frog in frogs[:1]:
+        est_min = frog.get("est_minutes", 30) or 30
+        if used_minutes + est_min <= available_minutes and est_min <= 60:
+            selected_frogs.append(frog)
+            used_minutes += est_min
+    
+    # Выбираем камни (максимум 2, до 45 минут каждый)
+    for stone in stones[:3]:
+        est_min = stone.get("est_minutes", 30) or 30
+        if len(selected_stones) < 2 and used_minutes + est_min <= available_minutes and est_min <= 45:
+            selected_stones.append(stone)
+            used_minutes += est_min
+    
+    # Выбираем песок (до 30 минут каждый, пока есть время)
+    for s in sand:
+        est_min = s.get("est_minutes", 30) or 30
+        if used_minutes + est_min <= available_minutes and est_min <= 30:
+            selected_sand.append(s)
+            used_minutes += est_min
+            if len(selected_sand) >= 5:  # Максимум 5 задач песка
+                break
+    
+    # Если воскресенье, можно добавить крупные задачи
+    if target_date.weekday() == 6:  # Воскресенье
+        for large in large_tasks[:2]:  # Максимум 2 крупные задачи в воскресенье
+            est_min = large.get("est_minutes", 90) or 90
+            if used_minutes + est_min <= available_minutes:
+                selected_sand.append(large)
+                used_minutes += est_min
+    
+    return selected_frogs, selected_stones, selected_sand
 
 def _escape_markdown(text: str) -> str:
     """Экранирует специальные символы Markdown в тексте."""
@@ -324,42 +439,63 @@ def _escape_markdown(text: str) -> str:
 async def cmd_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     try:
-        now = now_local()
-        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        end = start + timedelta(days=1)
-        rows = list_today(update.effective_chat.id, iso_utc(now), iso_utc(start), iso_utc(end))
-        if not rows:
-            rows = list_open_tasks(update.effective_chat.id)[:10]
-        frog, stones, sand = _pick_plan(rows)
-        def fmt(r):
-            due_str = ""
-            if r["due_at"]:
-                from datetime import datetime
-                dt = datetime.fromisoformat(r["due_at"]).astimezone(TZINFO)
-                due_str = f" • 🗓 {dt.strftime('%H:%M')}"
+    now = now_local()
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    end = start + timedelta(days=1)
+    rows = list_today(update.effective_chat.id, iso_utc(now), iso_utc(start), iso_utc(end))
+    if not rows:
+        rows = list_open_tasks(update.effective_chat.id)[:10]
+    frog, stones, sand = _pick_plan(rows)
+        
+        # Проверяем перегрузку по времени
+        all_selected = frog + stones + sand
+        today = now.date()
+        is_overloaded, total_minutes, available_minutes, overload_percent = check_time_overload(all_selected, today)
+        
+    def fmt(r):
+        due_str = ""
+        if r["due_at"]:
+            from datetime import datetime
+            dt = datetime.fromisoformat(r["due_at"]).astimezone(TZINFO)
+            due_str = f" • 🗓 {dt.strftime('%H:%M')}"
             title = r["title"] if "title" in r.keys() else ""
             context = r["context"] if "context" in r.keys() else ""
-            est_minutes = r["est_minutes"] if "est_minutes" in r.keys() else 0
-            priority = r["priority"] if "priority" in r.keys() else 0
+            est_minutes = r.get("est_minutes", 0) or 0
+            priority = r.get("priority", 0) or 0
             return f"#{r['id']} {_escape_markdown(title)} — [{_escape_markdown(context)}] • ⚡{int(priority)} • ⏱~{est_minutes}м{due_str}"
 
-        out = ["📅 *План на сегодня*"]
-        if frog:
-            out.append("\n🐸 *ЛЯГУШКА*")
-            out += [fmt(x) for x in frog]
-        if stones:
-            out.append("\n◼︎ *КАМНИ*")
-            out += [fmt(x) for x in stones]
-        if sand:
-            out.append("\n▫︎ *ПЕСОК*")
+    out = ["📅 *План на сегодня*"]
+        
+        # Информация о времени
+        weekday_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+        weekday_name = weekday_names[today.weekday()]
+        available_hours = available_minutes / 60
+        used_hours = total_minutes / 60
+        
+        if is_overloaded:
+            out.append(f"\n⚠️ *Перегрузка!* ({weekday_name})")
+            out.append(f"⏱ Использовано: {used_hours:.1f}ч / {available_hours:.1f}ч ({overload_percent:.0f}%)")
+            out.append(f"💡 Рекомендация: используй /rebalance_week для перераспределения")
+        else:
+            out.append(f"\n⏱ *Время:* {used_hours:.1f}ч / {available_hours:.1f}ч ({weekday_name})")
+        
+    if frog:
+        out.append("\n🐸 *ЛЯГУШКА*")
+        out += [fmt(x) for x in frog]
+    if stones:
+        out.append("\n◼︎ *КАМНИ*")
+        out += [fmt(x) for x in stones]
+    if sand:
+        out.append("\n▫︎ *ПЕСОК*")
             out += [fmt(x) for x in sand[:5]]
-        await update.message.reply_text("\n".join(out), parse_mode=ParseMode.MARKDOWN)
+        
+    await update.message.reply_text("\n".join(out), parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
         logger.error(f"Error in cmd_plan: {e}", exc_info=True)
         await update.message.reply_text("❌ Ошибка при формировании плана.")
 
 async def cmd_plan_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """План на указанную дату в формате ISO (например: 2025-11-05)"""
+    """План на указанную дату в формате ISO (например: 2025-11-05) с учётом доступного времени"""
     if not ensure_allowed(update): return
     try:
         if not context.args:
@@ -387,7 +523,12 @@ async def cmd_plan_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Если нет задач на конкретную дату, показываем открытые задачи
             rows = list_open_tasks(update.effective_chat.id)[:10]
         
-        frog, stones, sand = _pick_plan(rows)
+        frog, stones, sand = _pick_plan(rows, target_date)
+        
+        # Проверяем перегрузку по времени
+        all_selected = frog + stones + sand
+        is_overloaded, total_minutes, available_minutes, overload_percent = check_time_overload(all_selected, target_date)
+        
         def fmt(r):
             due_str = ""
             if r["due_at"]:
@@ -396,12 +537,25 @@ async def cmd_plan_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 due_str = f" • 🗓 {dt.strftime('%H:%M')}"
             title = r["title"] if "title" in r.keys() else ""
             context = r["context"] if "context" in r.keys() else ""
-            est_minutes = r["est_minutes"] if "est_minutes" in r.keys() else 0
-            priority = r["priority"] if "priority" in r.keys() else 0
+            est_minutes = r.get("est_minutes", 0) or 0
+            priority = r.get("priority", 0) or 0
             return f"#{r['id']} {_escape_markdown(title)} — [{_escape_markdown(context)}] • ⚡{int(priority)} • ⏱~{est_minutes}м{due_str}"
 
         date_display = target_date.strftime("%d.%m.%Y")
-        out = [f"📅 *План на {date_display}*"]
+        weekday_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+        weekday_name = weekday_names[target_date.weekday()]
+        available_hours = available_minutes / 60
+        used_hours = total_minutes / 60
+        
+        out = [f"📅 *План на {date_display} ({weekday_name})*"]
+        
+        # Информация о времени
+        if is_overloaded:
+            out.append(f"\n⚠️ *Перегрузка!*")
+            out.append(f"⏱ Использовано: {used_hours:.1f}ч / {available_hours:.1f}ч ({overload_percent:.0f}%)")
+            out.append(f"💡 Рекомендация: используй /rebalance_week для перераспределения")
+        else:
+            out.append(f"\n⏱ *Время:* {used_hours:.1f}ч / {available_hours:.1f}ч")
         if frog:
             out.append("\n🐸 *ЛЯГУШКА*")
             out += [fmt(x) for x in frog]
@@ -423,16 +577,16 @@ async def cmd_plan_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     try:
-        if not context.args:
-            await update.message.reply_text("Формат: /done <id>")
-            return
-        try:
-            tid = int(context.args[0])
-        except ValueError:
-            await update.message.reply_text("id должен быть числом.")
-            return
-        ok = mark_done(update.effective_chat.id, tid)
-        await update.message.reply_text("✅ Готово." if ok else "Не нашёл открытую задачу с таким id.")
+    if not context.args:
+        await update.message.reply_text("Формат: /done <id>")
+        return
+    try:
+        tid = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("id должен быть числом.")
+        return
+    ok = mark_done(update.effective_chat.id, tid)
+    await update.message.reply_text("✅ Готово." if ok else "Не нашёл открытую задачу с таким id.")
     except Exception as e:
         logger.error(f"Error in cmd_done: {e}", exc_info=True)
         await update.message.reply_text("❌ Ошибка при выполнении задачи.")
@@ -440,21 +594,21 @@ async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_snooze(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     try:
-        if len(context.args) < 2:
-            await update.message.reply_text("Формат: /snooze <id> <когда> (пример: /snooze 12 завтра 10:00)")
-            return
-        try:
-            tid = int(context.args[0])
-        except ValueError:
-            await update.message.reply_text("id должен быть числом.")
-            return
-        when = " ".join(context.args[1:])
-        new_due = parse_human_dt(when)
-        if not new_due:
-            await update.message.reply_text("Не понял дату. Пример: завтра 10:00")
-            return
-        ok = snooze_task(update.effective_chat.id, tid, iso_utc(new_due))
-        await update.message.reply_text("⏳ Перенёс." if ok else "Не нашёл задачу.")
+    if len(context.args) < 2:
+        await update.message.reply_text("Формат: /snooze <id> <когда> (пример: /snooze 12 завтра 10:00)")
+        return
+    try:
+        tid = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("id должен быть числом.")
+        return
+    when = " ".join(context.args[1:])
+    new_due = parse_human_dt(when)
+    if not new_due:
+        await update.message.reply_text("Не понял дату. Пример: завтра 10:00")
+        return
+    ok = snooze_task(update.effective_chat.id, tid, iso_utc(new_due))
+    await update.message.reply_text("⏳ Перенёс." if ok else "Не нашёл задачу.")
     except Exception as e:
         logger.error(f"Error in cmd_snooze: {e}", exc_info=True)
         await update.message.reply_text("❌ Ошибка при переносе задачи.")
@@ -480,22 +634,22 @@ async def cmd_drop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     try:
-        now = now_local().replace(hour=0, minute=0, second=0, microsecond=0)
-        end = now + timedelta(days=7)
+    now = now_local().replace(hour=0, minute=0, second=0, microsecond=0)
+    end = now + timedelta(days=7)
         # Используем SQL фильтрацию вместо Python
         rows = list_week_tasks(update.effective_chat.id, iso_utc(now), iso_utc(end))
-        if not rows:
-            await update.message.reply_text("На неделю пока пусто.")
-            return
-        lines = ["🗓 *Неделя (7 дней)*"]
-        current = ""
-        for r in rows:
+    if not rows:
+        await update.message.reply_text("На неделю пока пусто.")
+        return
+    lines = ["🗓 *Неделя (7 дней)*"]
+    current = ""
+    for r in rows:
             from datetime import datetime
-            dt = datetime.fromisoformat(r["due_at"]).astimezone(TZINFO)
-            day = dt.strftime("%a %d.%m")
-            if day != current:
-                current = day
-                lines.append(f"\n*{day}*")
+        dt = datetime.fromisoformat(r["due_at"]).astimezone(TZINFO)
+        day = dt.strftime("%a %d.%m")
+        if day != current:
+            current = day
+            lines.append(f"\n*{day}*")
             title = r["title"] if "title" in r.keys() else ""
             context = r["context"] if "context" in r.keys() else ""
             est_minutes = r["est_minutes"] if "est_minutes" in r.keys() else 0
@@ -526,18 +680,18 @@ async def cmd_export(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     conn = None
     try:
-        import csv, io
-        from .db import db_connect
-        conn = db_connect()
-        c = conn.cursor()
-        c.execute("SELECT id,title,description,context,due_at,added_at,status,priority,est_minutes,source FROM tasks ORDER BY id;")
-        rows = c.fetchall()
-        buf = io.StringIO()
-        w = csv.writer(buf)
-        w.writerow(["id","title","description","context","due_at","added_at","status","priority","est_minutes","source"])
-        for r in rows:
-            w.writerow([r["id"],r["title"],r["description"],r["context"],r["due_at"],r["added_at"],r["status"],r["priority"],r["est_minutes"],r["source"]])
-        await update.message.reply_document(document=buf.getvalue().encode("utf-8"), filename="daily_pilot_export.csv", caption="Экспорт задач (CSV)")
+    import csv, io
+    from .db import db_connect
+    conn = db_connect()
+    c = conn.cursor()
+    c.execute("SELECT id,title,description,context,due_at,added_at,status,priority,est_minutes,source FROM tasks ORDER BY id;")
+    rows = c.fetchall()
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["id","title","description","context","due_at","added_at","status","priority","est_minutes","source"])
+    for r in rows:
+        w.writerow([r["id"],r["title"],r["description"],r["context"],r["due_at"],r["added_at"],r["status"],r["priority"],r["est_minutes"],r["source"]])
+    await update.message.reply_document(document=buf.getvalue().encode("utf-8"), filename="daily_pilot_export.csv", caption="Экспорт задач (CSV)")
     except Exception as e:
         logger.error(f"Error in cmd_export: {e}", exc_info=True)
         await update.message.reply_text("❌ Ошибка при экспорте данных.")
@@ -1563,59 +1717,160 @@ async def cmd_rebalance_week(update: Update, context: ContextTypes.DEFAULT_TYPE)
         stones.sort(key=lambda x: (-x["priority"], x["est_minutes"] or 999))
         sand.sort(key=lambda x: (-x["priority"], x["est_minutes"] or 999))
 
-        # Распределяем по дням недели
+        # Разделяем задачи на крупные (90+ минут) и обычные
+        large_tasks = []
+        normal_frogs = []
+        normal_stones = []
+        normal_sand = []
+        
+        for r in frogs:
+            if (r.get("est_minutes") or 0) >= 90:
+                large_tasks.append(r)
+            else:
+                normal_frogs.append(r)
+        
+        for r in stones:
+            if (r.get("est_minutes") or 0) >= 90:
+                large_tasks.append(r)
+            else:
+                normal_stones.append(r)
+        
+        for r in sand:
+            if (r.get("est_minutes") or 0) >= 90:
+                large_tasks.append(r)
+            else:
+                normal_sand.append(r)
+        
+        # Распределяем по дням недели с учётом доступного времени
         days = [start + timedelta(days=i) for i in range(7)]
-        day_slots = {d.date(): {"frog": [], "stones": [], "sand": []} for d in days}
+        day_slots = {d.date(): {"frog": [], "stones": [], "sand": [], "used_minutes": 0} for d in days}
+        
+        # Крупные задачи (90+ минут) только на воскресенье
+        sunday_date = None
+        for day in days:
+            if day.weekday() == 6:  # Воскресенье
+                sunday_date = day.date()
+                break
+        
+        if sunday_date:
+            for large in large_tasks:
+                est_min = large.get("est_minutes", 90) or 90
+                available_minutes = get_available_time_minutes(sunday_date)
+                if day_slots[sunday_date]["used_minutes"] + est_min <= available_minutes:
+                    day_slots[sunday_date]["sand"].append(large)
+                    day_slots[sunday_date]["used_minutes"] += est_min
 
-        # Распределяем лягушек (по одной на день)
-        for i, frog in enumerate(frogs):
-            day_idx = i % len(days)
-            day_slots[days[day_idx].date()]["frog"].append(frog)
+        # Распределяем обычные лягушки (по одной на день, до 60 минут)
+        frog_idx = 0
+        for day in days:
+            if frog_idx >= len(normal_frogs):
+                break
+            day_date = day.date()
+            available_minutes = get_available_time_minutes(day_date)
+            frog = normal_frogs[frog_idx]
+            est_min = frog.get("est_minutes", 30) or 30
+            if est_min <= 60 and day_slots[day_date]["used_minutes"] + est_min <= available_minutes:
+                day_slots[day_date]["frog"].append(frog)
+                day_slots[day_date]["used_minutes"] += est_min
+                frog_idx += 1
 
-        # Распределяем камни (по 2 на день)
+        # Распределяем камни (по 2 на день, до 45 минут каждый)
         stone_idx = 0
         for day in days:
+            day_date = day.date()
+            available_minutes = get_available_time_minutes(day_date)
             for _ in range(max_stones):
-                if stone_idx < len(stones):
-                    day_slots[day.date()]["stones"].append(stones[stone_idx])
+                if stone_idx >= len(normal_stones):
+                    break
+                stone = normal_stones[stone_idx]
+                est_min = stone.get("est_minutes", 30) or 30
+                if est_min <= 45 and day_slots[day_date]["used_minutes"] + est_min <= available_minutes:
+                    day_slots[day_date]["stones"].append(stone)
+                    day_slots[day_date]["used_minutes"] += est_min
                     stone_idx += 1
+                else:
+                    break
 
-        # Распределяем песок (по max_sand на день)
+        # Распределяем песок (до max_sand на день, до 30 минут каждый)
         sand_idx = 0
         for day in days:
+            day_date = day.date()
+            available_minutes = get_available_time_minutes(day_date)
             for _ in range(max_sand):
-                if sand_idx < len(sand):
-                    day_slots[day.date()]["sand"].append(sand[sand_idx])
+                if sand_idx >= len(normal_sand):
+                    break
+                s = normal_sand[sand_idx]
+                est_min = s.get("est_minutes", 30) or 30
+                if est_min <= 30 and day_slots[day_date]["used_minutes"] + est_min <= available_minutes:
+                    day_slots[day_date]["sand"].append(s)
+                    day_slots[day_date]["used_minutes"] += est_min
                     sand_idx += 1
+                else:
+                    break
 
-        # Обновляем даты задач
+        # Обновляем даты задач с правильными временными слотами
         moved = 0
+        postponed_large = 0
         for day_date, slots in day_slots.items():
-            # Лягушки: 09:30
+            weekday = day_date.weekday()
+            
+            # Лягушки: вечер для Пн-Сб, утро для воскресенья
             for r in slots["frog"]:
-                nd_local = datetime.combine(day_date, datetime.min.time()).replace(tzinfo=TZINFO).replace(hour=9, minute=30)
+                if weekday == 6:  # Воскресенье
+                    hour, minute = 9, 0
+                else:  # Пн-Сб
+                    hour, minute = 19, 30
+                nd_local = datetime.combine(day_date, datetime.min.time()).replace(tzinfo=TZINFO).replace(hour=hour, minute=minute)
                 if snooze_task(r["chat_id"], r["id"], iso_utc(nd_local)):
                     moved += 1
             
-            # Камни: 14:30
+            # Камни: вечер для Пн-Сб, день для воскресенья
             for r in slots["stones"]:
-                nd_local = datetime.combine(day_date, datetime.min.time()).replace(tzinfo=TZINFO).replace(hour=14, minute=30)
+                if weekday == 6:  # Воскресенье
+                    hour, minute = 14, 0
+                else:  # Пн-Сб
+                    hour, minute = 20, 0
+                nd_local = datetime.combine(day_date, datetime.min.time()).replace(tzinfo=TZINFO).replace(hour=hour, minute=minute)
                 if snooze_task(r["chat_id"], r["id"], iso_utc(nd_local)):
                     moved += 1
             
-            # Песок: 20:30
+            # Песок: конец вечера для Пн-Сб, утро для воскресенья
             for r in slots["sand"]:
-                nd_local = datetime.combine(day_date, datetime.min.time()).replace(tzinfo=TZINFO).replace(hour=20, minute=30)
+                est_min = r.get("est_minutes", 30) or 30
+                if weekday == 6:  # Воскресенье
+                    hour, minute = 10, 0
+                else:  # Пн-Сб
+                    hour, minute = 20, 30
+                nd_local = datetime.combine(day_date, datetime.min.time()).replace(tzinfo=TZINFO).replace(hour=hour, minute=minute)
                 if snooze_task(r["chat_id"], r["id"], iso_utc(nd_local)):
                     moved += 1
-
+        
+        # Подсчитываем статистику
+        total_large = len(large_tasks)
+        placed_large = sum(len(slots["sand"]) for slots in day_slots.values() if any((r.get("est_minutes") or 0) >= 90 for r in slots["sand"]))
+        unplaced_tasks = len(normal_frogs) - frog_idx + len(normal_stones) - stone_idx + len(normal_sand) - sand_idx
+        
         deduped = len(rows) - len(unique_rows)
-        await update.message.reply_text(
-            f"♻️ Ребалансировка выполнена:\n"
-            f"• Убрано дублей: {deduped}\n"
-            f"• Обновлено задач: {moved}\n"
-            f"• Лягушек: {len(frogs)}, камней: {len(stones)}, песка: {len(sand)}"
-        )
+        msg_parts = [
+            f"♻️ *Ребалансировка выполнена:*",
+            f"• Убрано дублей: {deduped}",
+            f"• Обновлено задач: {moved}",
+            f"• Крупные задачи (90+ мин): {placed_large}/{total_large} на воскресенье"
+        ]
+        
+        if unplaced_tasks > 0:
+            msg_parts.append(f"⚠️ Не поместилось задач: {unplaced_tasks} (перегрузка по времени)")
+        
+        # Статистика по дням
+        weekday_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+        for day_date, slots in sorted(day_slots.items()):
+            if any(slots.values()[:-1]):  # Если есть задачи (кроме used_minutes)
+                weekday_name = weekday_names[day_date.weekday()]
+                used_hours = slots["used_minutes"] / 60
+                available_hours = get_available_time_minutes(day_date) / 60
+                msg_parts.append(f"• {weekday_name}: {used_hours:.1f}ч / {available_hours:.1f}ч")
+        
+        await update.message.reply_text("\n".join(msg_parts), parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
         logger.error(f"Error in cmd_rebalance_week: {e}", exc_info=True)
         await update.message.reply_text("❌ Ошибка ребалансировки.")
