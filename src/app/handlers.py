@@ -109,25 +109,25 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     try:
-        try:
-        if not text:
-            await update.message.reply_text("Формат: /add <задача> (можно добавить срок: «сегодня 19:00», «завтра», «через 2 часа»)")
-            return
-        parsed = parse_task(text)
-        due_dt = parse_human_dt(parsed.get("due")) if parsed.get("due") else None
-        est = estimate_minutes(parsed["title"])
-        pr = compute_priority(parsed["title"], due_dt, est)
-        tid = add_task(
-            update.effective_chat.id,
-            parsed["title"], parsed["description"],
-            parsed["context"],
-            iso_utc(due_dt), iso_utc(now_local()), pr, est, "text"
-        )
-        msg = f"✅ Добавлено #{tid}: *{parsed['title']}*\n"
-        if due_dt:
-            msg += f"🗓 {due_dt.astimezone(TZINFO).strftime('%d.%m %H:%M')}\n"
-        msg += f"📎 [{parsed['context']}] • ⏱~{est} мин • ⚡{int(pr)}"
-        await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
+    text = " ".join(context.args).strip()
+    if not text:
+        await update.message.reply_text("Формат: /add <задача> (можно добавить срок: «сегодня 19:00», «завтра», «через 2 часа»)")
+        return
+    parsed = parse_task(text)
+    due_dt = parse_human_dt(parsed.get("due")) if parsed.get("due") else None
+    est = estimate_minutes(parsed["title"])
+    pr = compute_priority(parsed["title"], due_dt, est)
+    tid = add_task(
+        update.effective_chat.id,
+        parsed["title"], parsed["description"],
+        parsed["context"],
+        iso_utc(due_dt), iso_utc(now_local()), pr, est, "text"
+    )
+    msg = f"✅ Добавлено #{tid}: *{parsed['title']}*\n"
+    if due_dt:
+        msg += f"🗓 {due_dt.astimezone(TZINFO).strftime('%d.%m %H:%M')}\n"
+    msg += f"📎 [{parsed['context']}] • ⏱~{est} мин • ⚡{int(pr)}"
+    await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
         logger.error(f"Error in cmd_add: {e}", exc_info=True)
         await update.message.reply_text("❌ Ошибка при добавлении задачи. Попробуйте ещё раз.")
@@ -136,26 +136,26 @@ async def msg_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     if not update.message.voice: return
     try:
-            await update.message.chat.send_action(ChatAction.TYPING)
-        file = await context.bot.get_file(update.message.voice.file_id)
-        ogg_bytes = await file.download_as_bytearray()
-        text = transcribe_ogg_to_text(bytes(ogg_bytes))
-        parsed = parse_task(text)
-        due_dt = parse_human_dt(parsed.get("due")) if parsed.get("due") else None
-        est = estimate_minutes(parsed["title"])
-        pr = compute_priority(parsed["title"], due_dt, est)
-        tid = add_task(
+    await update.message.chat.send_action(ChatAction.TYPING)
+    file = await context.bot.get_file(update.message.voice.file_id)
+    ogg_bytes = await file.download_as_bytearray()
+    text = transcribe_ogg_to_text(bytes(ogg_bytes))
+    parsed = parse_task(text)
+    due_dt = parse_human_dt(parsed.get("due")) if parsed.get("due") else None
+    est = estimate_minutes(parsed["title"])
+    pr = compute_priority(parsed["title"], due_dt, est)
+    tid = add_task(
         update.effective_chat.id,
         parsed["title"], parsed["description"],
         parsed["context"],
         iso_utc(due_dt), iso_utc(now_local()), pr, est, "voice"
-        )
-        msg = (f"🎙 Распознано: _{text}_\n\n"
+    )
+    msg = (f"🎙 Распознано: _{text}_\n\n"
            f"✅ Добавлено #{tid}: *{parsed['title']}*\n")
-        if due_dt:
+    if due_dt:
         msg += f"🗓 {due_dt.astimezone(TZINFO).strftime('%d.%m %H:%M')}\n"
-        msg += f"📎 [{parsed['context']}] • ⏱~{est} мин • ⚡{int(pr)}"
-        await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
+    msg += f"📎 [{parsed['context']}] • ⏱~{est} мин • ⚡{int(pr)}"
+    await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
         logger.error(f"Error in msg_voice: {e}", exc_info=True)
         await update.message.reply_text("❌ Ошибка при обработке голосового сообщения. Попробуйте ещё раз.")
@@ -163,12 +163,12 @@ async def msg_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_inbox(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     try:
-            rows = list_inbox(update.effective_chat.id)
-        if not rows:
+    rows = list_inbox(update.effective_chat.id)
+    if not rows:
         await update.message.reply_text("📥 Инбокс пуст.")
         return
-        lines = ["📥 *Инбокс*:"]
-        for r in rows:
+    lines = ["📥 *Инбокс*:"]
+    for r in rows:
             tid = r["id"]
             title = r["title"] if "title" in r.keys() else ""
             ctx = r["context"] if "context" in r.keys() else ""
@@ -439,20 +439,20 @@ def _escape_markdown(text: str) -> str:
 async def cmd_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     try:
-        now = now_local()
-        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        end = start + timedelta(days=1)
-        rows = list_today(update.effective_chat.id, iso_utc(now), iso_utc(start), iso_utc(end))
-        if not rows:
+    now = now_local()
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    end = start + timedelta(days=1)
+    rows = list_today(update.effective_chat.id, iso_utc(now), iso_utc(start), iso_utc(end))
+    if not rows:
         rows = list_open_tasks(update.effective_chat.id)[:10]
-        frog, stones, sand = _pick_plan(rows)
+    frog, stones, sand = _pick_plan(rows)
         
         # Проверяем перегрузку по времени
         all_selected = frog + stones + sand
         today = now.date()
         is_overloaded, total_minutes, available_minutes, overload_percent = check_time_overload(all_selected, today)
         
-        def fmt(r):
+    def fmt(r):
         due_str = ""
         if r["due_at"]:
             from datetime import datetime
@@ -464,7 +464,7 @@ async def cmd_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
             priority = r.get("priority", 0) or 0
             return f"#{r['id']} {_escape_markdown(title)} — [{_escape_markdown(context)}] • ⚡{int(priority)} • ⏱~{est_minutes}м{due_str}"
 
-        out = ["📅 *План на сегодня*"]
+    out = ["📅 *План на сегодня*"]
         
         # Информация о времени
         weekday_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
@@ -479,17 +479,17 @@ async def cmd_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             out.append(f"\n⏱ *Время:* {used_hours:.1f}ч / {available_hours:.1f}ч ({weekday_name})")
         
-        if frog:
+    if frog:
         out.append("\n🐸 *ЛЯГУШКА*")
         out += [fmt(x) for x in frog]
-        if stones:
+    if stones:
         out.append("\n◼︎ *КАМНИ*")
         out += [fmt(x) for x in stones]
-        if sand:
+    if sand:
         out.append("\n▫︎ *ПЕСОК*")
             out += [fmt(x) for x in sand[:5]]
         
-        await update.message.reply_text("\n".join(out), parse_mode=ParseMode.MARKDOWN)
+    await update.message.reply_text("\n".join(out), parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
         logger.error(f"Error in cmd_plan: {e}", exc_info=True)
         await update.message.reply_text("❌ Ошибка при формировании плана.")
@@ -577,10 +577,10 @@ async def cmd_plan_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     try:
-        if not context.args:
+    if not context.args:
         await update.message.reply_text("Формат: /done <id>")
         return
-        try:
+    try:
         tid = int(context.args[0])
     except ValueError:
         await update.message.reply_text("id должен быть числом.")
@@ -594,10 +594,10 @@ async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_snooze(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     try:
-        if len(context.args) < 2:
+    if len(context.args) < 2:
         await update.message.reply_text("Формат: /snooze <id> <когда> (пример: /snooze 12 завтра 10:00)")
         return
-        try:
+    try:
         tid = int(context.args[0])
     except ValueError:
         await update.message.reply_text("id должен быть числом.")
@@ -634,16 +634,16 @@ async def cmd_drop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     try:
-        now = now_local().replace(hour=0, minute=0, second=0, microsecond=0)
-        end = now + timedelta(days=7)
+    now = now_local().replace(hour=0, minute=0, second=0, microsecond=0)
+    end = now + timedelta(days=7)
         # Используем SQL фильтрацию вместо Python
         rows = list_week_tasks(update.effective_chat.id, iso_utc(now), iso_utc(end))
-        if not rows:
+    if not rows:
         await update.message.reply_text("На неделю пока пусто.")
         return
-        lines = ["🗓 *Неделя (7 дней)*"]
-        current = ""
-        for r in rows:
+    lines = ["🗓 *Неделя (7 дней)*"]
+    current = ""
+    for r in rows:
             from datetime import datetime
         dt = datetime.fromisoformat(r["due_at"]).astimezone(TZINFO)
         day = dt.strftime("%a %d.%m")
@@ -680,18 +680,18 @@ async def cmd_export(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     conn = None
     try:
-        import csv, io
-        from .db import db_connect
-        conn = db_connect()
-        c = conn.cursor()
-        c.execute("SELECT id,title,description,context,due_at,added_at,status,priority,est_minutes,source FROM tasks ORDER BY id;")
-        rows = c.fetchall()
-        buf = io.StringIO()
-        w = csv.writer(buf)
-        w.writerow(["id","title","description","context","due_at","added_at","status","priority","est_minutes","source"])
-        for r in rows:
+    import csv, io
+    from .db import db_connect
+    conn = db_connect()
+    c = conn.cursor()
+    c.execute("SELECT id,title,description,context,due_at,added_at,status,priority,est_minutes,source FROM tasks ORDER BY id;")
+    rows = c.fetchall()
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["id","title","description","context","due_at","added_at","status","priority","est_minutes","source"])
+    for r in rows:
         w.writerow([r["id"],r["title"],r["description"],r["context"],r["due_at"],r["added_at"],r["status"],r["priority"],r["est_minutes"],r["source"]])
-        await update.message.reply_document(document=buf.getvalue().encode("utf-8"), filename="daily_pilot_export.csv", caption="Экспорт задач (CSV)")
+    await update.message.reply_document(document=buf.getvalue().encode("utf-8"), filename="daily_pilot_export.csv", caption="Экспорт задач (CSV)")
     except Exception as e:
         logger.error(f"Error in cmd_export: {e}", exc_info=True)
         await update.message.reply_text("❌ Ошибка при экспорте данных.")
