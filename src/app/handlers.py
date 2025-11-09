@@ -109,7 +109,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     try:
-    try:
+        try:
         if not text:
             await update.message.reply_text("Формат: /add <задача> (можно добавить срок: «сегодня 19:00», «завтра», «через 2 часа»)")
             return
@@ -136,7 +136,7 @@ async def msg_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     if not update.message.voice: return
     try:
-        await update.message.chat.send_action(ChatAction.TYPING)
+            await update.message.chat.send_action(ChatAction.TYPING)
         file = await context.bot.get_file(update.message.voice.file_id)
         ogg_bytes = await file.download_as_bytearray()
         text = transcribe_ogg_to_text(bytes(ogg_bytes))
@@ -163,7 +163,7 @@ async def msg_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_inbox(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     try:
-        rows = list_inbox(update.effective_chat.id)
+            rows = list_inbox(update.effective_chat.id)
         if not rows:
         await update.message.reply_text("📥 Инбокс пуст.")
         return
