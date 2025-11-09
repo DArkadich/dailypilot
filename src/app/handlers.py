@@ -109,7 +109,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     try:
-    text = " ".join(context.args).strip()
+        text = " ".join(context.args).strip()
     if not text:
         await update.message.reply_text("Формат: /add <задача> (можно добавить срок: «сегодня 19:00», «завтра», «через 2 часа»)")
         return
@@ -135,7 +135,7 @@ async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def msg_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     if not update.message.voice: return
-    try:
+        await update.message.chat.send_action(ChatAction.TYPING)
     await update.message.chat.send_action(ChatAction.TYPING)
     file = await context.bot.get_file(update.message.voice.file_id)
     ogg_bytes = await file.download_as_bytearray()
@@ -162,7 +162,7 @@ async def msg_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_inbox(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
-    try:
+        rows = list_inbox(update.effective_chat.id)
     rows = list_inbox(update.effective_chat.id)
     if not rows:
         await update.message.reply_text("📥 Инбокс пуст.")
@@ -438,7 +438,7 @@ def _escape_markdown(text: str) -> str:
 
 async def cmd_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
-    try:
+        now = now_local()
     now = now_local()
     start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     end = start + timedelta(days=1)
@@ -576,7 +576,7 @@ async def cmd_plan_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
-    try:
+        if not context.args:
     if not context.args:
         await update.message.reply_text("Формат: /done <id>")
         return
@@ -593,7 +593,7 @@ async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_snooze(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
-    try:
+        if len(context.args) < 2:
     if len(context.args) < 2:
         await update.message.reply_text("Формат: /snooze <id> <когда> (пример: /snooze 12 завтра 10:00)")
         return
@@ -633,7 +633,7 @@ async def cmd_drop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
-    try:
+        now = now_local().replace(hour=0, minute=0, second=0, microsecond=0)
     now = now_local().replace(hour=0, minute=0, second=0, microsecond=0)
     end = now + timedelta(days=7)
         # Используем SQL фильтрацию вместо Python
@@ -679,7 +679,7 @@ async def cmd_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_export(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     conn = None
-    try:
+        import csv, io
     import csv, io
     from .db import db_connect
     conn = db_connect()
