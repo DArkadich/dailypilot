@@ -163,7 +163,7 @@ async def msg_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_inbox(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     try:
-    rows = list_inbox(update.effective_chat.id)
+        rows = list_inbox(update.effective_chat.id)
     if not rows:
         await update.message.reply_text("📥 Инбокс пуст.")
         return
@@ -439,7 +439,7 @@ def _escape_markdown(text: str) -> str:
 async def cmd_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     try:
-    now = now_local()
+        now = now_local()
     start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     end = start + timedelta(days=1)
     rows = list_today(update.effective_chat.id, iso_utc(now), iso_utc(start), iso_utc(end))
