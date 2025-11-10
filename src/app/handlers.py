@@ -111,8 +111,8 @@ async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         text = " ".join(context.args).strip()
         if not text:
-        await update.message.reply_text("Формат: /add <задача> (можно добавить срок: «сегодня 19:00», «завтра», «через 2 часа»)")
-        return
+            await update.message.reply_text("Формат: /add <задача> (можно добавить срок: «сегодня 19:00», «завтра», «через 2 часа»)")
+            return
         parsed = parse_task(text)
         due_dt = parse_human_dt(parsed.get("due")) if parsed.get("due") else None
         est = estimate_minutes(parsed["title"])
