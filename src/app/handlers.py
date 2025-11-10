@@ -165,8 +165,8 @@ async def cmd_inbox(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         rows = list_inbox(update.effective_chat.id)
         if not rows:
-        await update.message.reply_text("📥 Инбокс пуст.")
-        return
+            await update.message.reply_text("📥 Инбокс пуст.")
+            return
         lines = ["📥 *Инбокс*:"]
         for r in rows:
             tid = r["id"]
