@@ -125,8 +125,7 @@ async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     msg = f"✅ Добавлено #{tid}: *{parsed['title']}*\n"
     if due_dt:
-            msg += f"🗓 {due_dt.astimezone(TZINFO).strftime('%d.%m %H:%M')}
-"
+        msg += f"🗓 {due_dt.astimezone(TZINFO).strftime('%d.%m %H:%M')}\n"
     msg += f"📎 [{parsed['context']}] • ⏱~{est} мин • ⚡{int(pr)}"
     await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
