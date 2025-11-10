@@ -438,8 +438,8 @@ def _escape_markdown(text: str) -> str:
 
 async def cmd_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
+    try:
         now = now_local()
-    now = now_local()
     start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     end = start + timedelta(days=1)
     rows = list_today(update.effective_chat.id, iso_utc(now), iso_utc(start), iso_utc(end))
@@ -498,7 +498,7 @@ async def cmd_plan_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """План на указанную дату в формате ISO (например: 2025-11-05) с учётом доступного времени"""
     if not ensure_allowed(update): return
     try:
-    try:
+        try:
             await update.message.reply_text(
                 "📅 Использование: `/plan_date 2025-11-05`\n"
                 "Формат даты: YYYY-MM-DD (ISO)",
@@ -617,7 +617,7 @@ async def cmd_drop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Убирает задачу из плана (помечает как dropped)"""
     if not ensure_allowed(update): return
     try:
-    try:
+        try:
             await update.message.reply_text("Формат: /drop <id>")
             return
         try:
@@ -702,7 +702,7 @@ async def cmd_export(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     try:
-    try:
+        try:
         if not stats:
             await update.message.reply_text("❌ Ошибка при получении статистики.")
             return
@@ -766,7 +766,7 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     try:
-    try:
+        try:
         import platform
         from .config import DB_PATH
         import os
@@ -799,7 +799,7 @@ async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_push_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     try:
-    try:
+        try:
         from .integrations.sheets import export_week_from_bot_to_sheets
         
         wk_count, days_count = export_week_from_bot_to_sheets()
@@ -811,7 +811,7 @@ async def cmd_push_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_pull_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     try:
-    try:
+        try:
         
         # Поддержка принудительного импорта: /pull_week force
         force = False
@@ -828,7 +828,7 @@ async def cmd_sync_notion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Берём актуальные таблицы из Sheets и шьём в Notion базы (если настроены IDs)."""
     if not ensure_allowed(update): return
     try:
-    try:
+        try:
         from .integrations.notion import push_week_tasks, push_days
         
         sh = _open_sheet()
@@ -847,7 +847,7 @@ async def cmd_generate_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Генерирует неделю из Goals/Projects в Sheets."""
     if not ensure_allowed(update): return
     try:
-    try:
+        try:
         
         w, d, added = generate_week_from_goals()
         await update.message.reply_text(f"✅ Сгенерирована неделя: Week_Tasks={w}, Days={d}, задач создано={added}")
@@ -859,7 +859,7 @@ async def cmd_merge_inbox(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Слить текучку из бота в Week_Tasks (добавить как камни недели по приоритету)"""
     if not ensure_allowed(update): return
     try:
-    try:
+        try:
         
         wk_count, _ = export_week_from_bot_to_sheets()
         await update.message.reply_text(f"✅ Текучка добавлена в Week_Tasks (Sheets): {wk_count} строк")
@@ -871,7 +871,7 @@ async def cmd_commit_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Прочитать Week_Tasks из Sheets и зафиксировать в БД задач (дедлайны на дни недели)"""
     if not ensure_allowed(update): return
     try:
-    try:
+        try:
         
         added = import_week_from_sheets_to_bot()
         await update.message.reply_text(f"✅ Неделя зафиксирована: добавлено задач={added}")
@@ -937,7 +937,7 @@ async def msg_text_any(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_label = update.effective_user.username if update.effective_user and update.effective_user.username else str(update.effective_user.id)
     try:
-    try:
+        try:
         await update.message.reply_text("🪞 Рефлексия сохранена. Хорошего дня!")
     except Exception as e:
         await update.message.reply_text(f"❌ Не удалось сохранить рефлексию: {e}")
@@ -948,7 +948,7 @@ async def cmd_ai_review(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Не задан OPENAI_API_KEY.")
         return
     try:
-    try:
+        try:
         refl = get_reflections_last_7d()
 
         def fmt_tasks(xs):
@@ -1011,7 +1011,7 @@ async def cmd_ai_review(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_weekend(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     try:
-    try:
+        try:
         tasks = get_week_tasks_done_last_7d()
         refl = get_reflections_last_7d()
 
@@ -1097,7 +1097,7 @@ async def cmd_weekend(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_writeback_ids(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     try:
-    try:
+        try:
         from gspread.utils import rowcol_to_a1
         from .db import db_connect
 
@@ -1168,7 +1168,7 @@ async def cmd_calendar_advice(update: Update, context: ContextTypes.DEFAULT_TYPE
     await update.message.chat.send_action(ChatAction.TYPING)
     
     try:
-    try:
+        try:
         from collections import defaultdict
         from dateutil.parser import isoparse
         
@@ -1324,7 +1324,7 @@ async def cmd_can_take(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.chat.send_action(ChatAction.TYPING)
     
     try:
-    try:
+        try:
         from .db import db_connect
         
         # 1. Загружаем активные задачи из БД и Week_Tasks
@@ -1470,7 +1470,7 @@ async def callback_can_take(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     
     try:
-    try:
+        try:
         if not data.startswith("can_take_"):
             return
         
@@ -1547,7 +1547,7 @@ async def cmd_roll_over(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     if not ensure_allowed(update): return
     try:
-    try:
+        try:
         target_date = None
         if context.args:
             try:
@@ -1601,7 +1601,7 @@ async def cmd_fix_times(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Нормализует время задач с дедлайном 00:00 → лягушка 09:00, камни 14:00, прочее 20:00."""
     if not ensure_allowed(update): return
     try:
-    try:
+        try:
         from .config import TZINFO
         conn = db_connect()
         c = conn.cursor()
@@ -1643,7 +1643,7 @@ async def cmd_rebalance_week(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """
     if not ensure_allowed(update): return
     try:
-    try:
+        try:
         max_frog = 1
         max_stones = 2
         max_sand = 4
@@ -1887,7 +1887,7 @@ async def cmd_ai_rebalance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🤖 Анализирую задачи с помощью AI...")
     
     try:
-    try:
+        try:
         if context.args:
             try:
                 max_sand = int(context.args[0])
