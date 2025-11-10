@@ -135,7 +135,7 @@ async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def msg_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     if not update.message.voice: return
-    try:
+        try:
     await update.message.chat.send_action(ChatAction.TYPING)
     file = await context.bot.get_file(update.message.voice.file_id)
     ogg_bytes = await file.download_as_bytearray()
