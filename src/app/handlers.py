@@ -191,7 +191,7 @@ async def cmd_inbox(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 size += len(ln) + 1
             if chunk:
                 await update.message.reply_text("\n".join(chunk), parse_mode=ParseMode.MARKDOWN)
-        except Exception as e:
+    except Exception as e:
         logger.error(f"Error in cmd_inbox: {e}", exc_info=True)
         await update.message.reply_text("❌ Ошибка при получении задач.")
 
