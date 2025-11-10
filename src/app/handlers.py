@@ -164,11 +164,11 @@ async def cmd_inbox(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     try:
         rows = list_inbox(update.effective_chat.id)
-    if not rows:
+        if not rows:
         await update.message.reply_text("📥 Инбокс пуст.")
         return
-    lines = ["📥 *Инбокс*:"]
-    for r in rows:
+        lines = ["📥 *Инбокс*:"]
+        for r in rows:
             tid = r["id"]
             title = r["title"] if "title" in r.keys() else ""
             ctx = r["context"] if "context" in r.keys() else ""
@@ -191,7 +191,7 @@ async def cmd_inbox(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 size += len(ln) + 1
             if chunk:
                 await update.message.reply_text("\n".join(chunk), parse_mode=ParseMode.MARKDOWN)
-    except Exception as e:
+        except Exception as e:
         logger.error(f"Error in cmd_inbox: {e}", exc_info=True)
         await update.message.reply_text("❌ Ошибка при получении задач.")
 
