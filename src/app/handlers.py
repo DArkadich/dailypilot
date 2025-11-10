@@ -110,25 +110,25 @@ async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ensure_allowed(update): return
     try:
         text = " ".join(context.args).strip()
-    if not text:
+        if not text:
         await update.message.reply_text("Формат: /add <задача> (можно добавить срок: «сегодня 19:00», «завтра», «через 2 часа»)")
         return
-    parsed = parse_task(text)
-    due_dt = parse_human_dt(parsed.get("due")) if parsed.get("due") else None
-    est = estimate_minutes(parsed["title"])
-    pr = compute_priority(parsed["title"], due_dt, est)
-    tid = add_task(
+        parsed = parse_task(text)
+        due_dt = parse_human_dt(parsed.get("due")) if parsed.get("due") else None
+        est = estimate_minutes(parsed["title"])
+        pr = compute_priority(parsed["title"], due_dt, est)
+        tid = add_task(
         update.effective_chat.id,
         parsed["title"], parsed["description"],
         parsed["context"],
         iso_utc(due_dt), iso_utc(now_local()), pr, est, "text"
-    )
-    msg = f"✅ Добавлено #{tid}: *{parsed['title']}*\n"
-    if due_dt:
+        )
+        msg = f"✅ Добавлено #{tid}: *{parsed['title']}*\n"
+        if due_dt:
         msg += f"🗓 {due_dt.astimezone(TZINFO).strftime('%d.%m %H:%M')}\n"
-    msg += f"📎 [{parsed['context']}] • ⏱~{est} мин • ⚡{int(pr)}"
-    await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
-    except Exception as e:
+        msg += f"📎 [{parsed['context']}] • ⏱~{est} мин • ⚡{int(pr)}"
+        await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
+        except Exception as e:
         logger.error(f"Error in cmd_add: {e}", exc_info=True)
         await update.message.reply_text("❌ Ошибка при добавлении задачи. Попробуйте ещё раз.")
 
