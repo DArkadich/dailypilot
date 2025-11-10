@@ -128,7 +128,7 @@ async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
             msg += f"🗓 {due_dt.astimezone(TZINFO).strftime('%d.%m %H:%M')}\n"
         msg += f"📎 [{parsed['context']}] • ⏱~{est} мин • ⚡{int(pr)}"
         await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
-        except Exception as e:
+    except Exception as e:
         logger.error(f"Error in cmd_add: {e}", exc_info=True)
         await update.message.reply_text("❌ Ошибка при добавлении задачи. Попробуйте ещё раз.")
 
